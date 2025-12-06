@@ -55,12 +55,12 @@
             width: 100%;
             height: 100%;
             transform-style: preserve-3d;
-            transform-origin: 50% 0%; /* Flip from top edge like a calendar */
+            transform-origin: 50% 50%; /* Center - pivot handled by matrix */
             backface-visibility: hidden;
             border-radius: 20px;
             overflow: hidden;
             will-change: transform, filter;
-            transition: filter 0.05s ease-out;
+            transition: filter 0.1s ease-out;
         }
 
         .card-face {
@@ -436,10 +436,11 @@
             maxRotation: 95,        // Max rotation angle (slightly past 90 for flip effect)
             blurMax: 15,            // Maximum blur in pixels
             blurStartAngle: 20,     // Start blurring after this rotation
-            scrollSensitivity: 0.003, // How much scroll affects rotation
+            scrollSensitivity: 0.002, // How much scroll affects rotation
             snapThreshold: 45,      // Angle threshold for snapping to next card
-            animationDuration: 400, // Snap animation duration in ms
+            animationDuration: 500, // Snap animation duration in ms
             perspective: 1500,      // 3D perspective depth
+            pivotDistance: 3000,    // Distance to pivot point (10x card height ~300px)
         };
 
         // State
@@ -484,6 +485,19 @@
         }
 
         /**
+         * Creates a translation matrix for Y-axis offset
+         * Used to move pivot point for rotation
+         */
+        function translationMatrixY(y) {
+            return [
+                1, 0, 0, 0,
+                0, 1, 0, 0,
+                0, 0, 1, 0,
+                0, y, 0, 1
+            ];
+        }
+
+        /**
          * Multiplies two 4x4 matrices
          */
         function multiplyMatrices(a, b) {
@@ -507,6 +521,9 @@
 
         /**
          * Calculate the complete transformation matrix for a card
+         * Uses distant pivot technique: translate to pivot -> rotate -> translate back
+         * This creates a smooth arc as if flipping around a point far above the card
+         *
          * @param {number} rotation - Current rotation angle
          * @param {number} zOffset - Z-axis offset for stacking
          */
@@ -514,9 +531,18 @@
             // Start with Z translation (for stacking depth)
             let matrix = translationMatrixZ(zOffset);
 
-            // Apply X rotation (the flip)
+            // Distant pivot technique:
+            // 1. Translate UP to the pivot point (negative Y moves up in screen space)
+            const toPivot = translationMatrixY(-CONFIG.pivotDistance);
+            matrix = multiplyMatrices(matrix, toPivot);
+
+            // 2. Apply X rotation (the flip) around this distant point
             const rotMatrix = rotationMatrixX(rotation);
             matrix = multiplyMatrices(matrix, rotMatrix);
+
+            // 3. Translate back DOWN from the pivot point
+            const fromPivot = translationMatrixY(CONFIG.pivotDistance);
+            matrix = multiplyMatrices(matrix, fromPivot);
 
             return matrix;
         }
@@ -631,13 +657,13 @@
         function animateToTarget() {
             const diff = targetScroll - currentScroll;
 
-            if (Math.abs(diff) < 0.001) {
+            if (Math.abs(diff) < 0.0005) {
                 currentScroll = targetScroll;
                 updateCards();
                 return;
             }
 
-            currentScroll += diff * 0.15; // Easing factor
+            currentScroll += diff * 0.08; // Smoother easing factor
             updateCards();
             requestAnimationFrame(animateToTarget);
         }
