@@ -434,12 +434,15 @@
         // Configuration
         const CONFIG = {
             maxRotation: 95,        // Max rotation angle (slightly past 90 for flip effect)
-            blurMax: 15,            // Maximum blur in pixels
-            blurStartAngle: 20,     // Start blurring after this rotation
-            scrollSensitivity: 0.003, // How much scroll affects rotation
+            blurMax: 12,            // Maximum blur in pixels
+            blurStartAngle: 15,     // Start blurring after this rotation
+            scrollSensitivity: 0.0012, // How much scroll affects rotation (slower = smoother)
             snapThreshold: 45,      // Angle threshold for snapping to next card
-            animationDuration: 400, // Snap animation duration in ms
+            animationDuration: 600, // Snap animation duration in ms
             perspective: 1500,      // 3D perspective depth
+            easing: 0.06,           // Scroll interpolation factor (lower = smoother)
+            fadeStartAngle: 40,     // Start fading out at this angle
+            zPullBack: 800,         // How far to pull back flipped cards in Z-space
         };
 
         // State
@@ -484,6 +487,19 @@
         }
 
         /**
+         * Creates a translation matrix for Y-axis offset
+         * Used to move flipped cards upward out of view
+         */
+        function translationMatrixY(y) {
+            return [
+                1, 0, 0, 0,
+                0, 1, 0, 0,
+                0, 0, 1, 0,
+                0, y, 0, 1
+            ];
+        }
+
+        /**
          * Multiplies two 4x4 matrices
          */
         function multiplyMatrices(a, b) {
@@ -509,14 +525,24 @@
          * Calculate the complete transformation matrix for a card
          * @param {number} rotation - Current rotation angle
          * @param {number} zOffset - Z-axis offset for stacking
+         * @param {number} yOffset - Y-axis offset to move card up as it flips
+         * @param {number} zPullBack - Additional Z offset to pull flipped cards back
          */
-        function calculateCardMatrix(rotation, zOffset) {
-            // Start with Z translation (for stacking depth)
+        function calculateCardMatrix(rotation, zOffset, yOffset, zPullBack) {
+            // Start with base Z translation (for stacking depth)
             let matrix = translationMatrixZ(zOffset);
+
+            // Add Y translation (move up as card flips)
+            const yMatrix = translationMatrixY(yOffset);
+            matrix = multiplyMatrices(matrix, yMatrix);
 
             // Apply X rotation (the flip)
             const rotMatrix = rotationMatrixX(rotation);
             matrix = multiplyMatrices(matrix, rotMatrix);
+
+            // Pull back in Z-space after rotation (moves flipped cards away from camera)
+            const pullBackMatrix = translationMatrixZ(zPullBack);
+            matrix = multiplyMatrices(matrix, pullBackMatrix);
 
             return matrix;
         }
@@ -541,6 +567,8 @@
                 // Calculate rotation for this card
                 let rotation = 0;
                 let zOffset = (totalCards - index) * -2; // Stack cards with depth
+                let yOffset = 0;
+                let zPullBack = 0;
                 let opacity = 1;
                 let blur = 0;
 
@@ -549,33 +577,48 @@
                     rotation = -CONFIG.maxRotation;
                     opacity = 0;
                     blur = CONFIG.blurMax;
+                    yOffset = -300; // Move fully flipped cards up and out
+                    zPullBack = -CONFIG.zPullBack; // Pull far back
                 } else if (normalizedScroll > cardStart) {
                     // Card is currently flipping
                     const progress = (normalizedScroll - cardStart) / scrollPerCard;
-                    rotation = -progress * CONFIG.maxRotation;
+
+                    // Use eased progress for smoother rotation curve
+                    const easedProgress = easeOutCubic(progress);
+                    rotation = -easedProgress * CONFIG.maxRotation;
 
                     // Calculate blur based on rotation angle
                     const absRotation = Math.abs(rotation);
                     if (absRotation > CONFIG.blurStartAngle) {
                         const blurProgress = (absRotation - CONFIG.blurStartAngle) / (CONFIG.maxRotation - CONFIG.blurStartAngle);
-                        blur = blurProgress * CONFIG.blurMax;
+                        blur = easeInQuad(blurProgress) * CONFIG.blurMax;
                     }
 
-                    // Fade out as card flips past 70 degrees
-                    if (absRotation > 70) {
-                        opacity = 1 - ((absRotation - 70) / (CONFIG.maxRotation - 70));
+                    // Move card up as it flips (proportional to rotation)
+                    yOffset = -progress * 200;
+
+                    // Pull back in Z as card flips to reduce occlusion
+                    zPullBack = -progress * CONFIG.zPullBack;
+
+                    // Fade out as card flips past fadeStartAngle
+                    if (absRotation > CONFIG.fadeStartAngle) {
+                        const fadeProgress = (absRotation - CONFIG.fadeStartAngle) / (CONFIG.maxRotation - CONFIG.fadeStartAngle);
+                        opacity = 1 - easeInQuad(fadeProgress);
                     }
                 }
 
                 // Calculate and apply the transformation matrix
-                const matrix = calculateCardMatrix(rotation, zOffset);
+                const matrix = calculateCardMatrix(rotation, zOffset, yOffset, zPullBack);
                 const matrixCSS = matrixToCSS(matrix);
 
                 // Apply transforms
                 card.style.transform = matrixCSS;
                 card.style.filter = blur > 0.1 ? `blur(${blur.toFixed(1)}px)` : 'none';
-                card.style.opacity = opacity;
-                card.style.zIndex = totalCards - index + (rotation < -45 ? -100 : 0);
+                card.style.opacity = Math.max(0, opacity);
+                card.style.zIndex = totalCards - index + (rotation < -30 ? -100 : 0);
+
+                // Hide completely when fully flipped to prevent any occlusion
+                card.style.visibility = opacity < 0.01 ? 'hidden' : 'visible';
 
                 // Update active card tracking
                 if (normalizedScroll >= cardStart && normalizedScroll < cardEnd) {
@@ -600,6 +643,19 @@
                 document.getElementById('debugScroll').textContent = currentScroll.toFixed(3);
                 document.getElementById('debugCard').textContent = activeCardIndex;
             }
+        }
+
+        // Easing functions for smoother animations
+        function easeOutCubic(t) {
+            return 1 - Math.pow(1 - t, 3);
+        }
+
+        function easeInQuad(t) {
+            return t * t;
+        }
+
+        function easeInOutCubic(t) {
+            return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
         }
 
         // ============================================
@@ -631,13 +687,14 @@
         function animateToTarget() {
             const diff = targetScroll - currentScroll;
 
-            if (Math.abs(diff) < 0.001) {
+            if (Math.abs(diff) < 0.0005) {
                 currentScroll = targetScroll;
                 updateCards();
                 return;
             }
 
-            currentScroll += diff * 0.15; // Easing factor
+            // Smooth interpolation with configurable easing
+            currentScroll += diff * CONFIG.easing;
             updateCards();
             requestAnimationFrame(animateToTarget);
         }
