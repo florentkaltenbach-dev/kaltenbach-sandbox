@@ -300,6 +300,105 @@
             display: block;
         }
 
+        /* Corner Card - Character Selector */
+        .corner-card {
+            position: fixed;
+            top: 25px;
+            left: 25px;
+            z-index: 100;
+            background: rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(15px);
+            border-radius: 16px;
+            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            min-width: 140px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .corner-card-title {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            opacity: 0.6;
+            margin-bottom: 12px;
+            text-align: center;
+        }
+
+        .character-display {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 15px;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+            border: 2px solid rgba(0, 217, 255, 0.3);
+            transition: all 0.3s ease;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .character-display:hover {
+            border-color: #00d9ff;
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(0, 217, 255, 0.3);
+        }
+
+        .character-display:active {
+            transform: scale(0.95);
+        }
+
+        .character-face {
+            transition: transform 0.3s ease;
+        }
+
+        .character-display:hover .character-face {
+            transform: scale(1.1);
+        }
+
+        .character-selector {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .character-option {
+            width: 32px;
+            height: 32px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+            cursor: pointer;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.2s ease;
+        }
+
+        .character-option:hover {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(168, 85, 247, 0.5);
+            transform: translateY(-2px);
+        }
+
+        .character-option.active {
+            background: rgba(0, 217, 255, 0.2);
+            border-color: #00d9ff;
+            box-shadow: 0 0 10px rgba(0, 217, 255, 0.3);
+        }
+
+        .character-name {
+            text-align: center;
+            font-size: 0.75rem;
+            color: #00d9ff;
+            margin-top: 10px;
+            font-weight: 500;
+        }
+
         /* Mobile adjustments */
         @media (max-width: 768px) {
             .card-stack {
@@ -328,6 +427,26 @@
                 width: 12px;
                 height: 12px;
             }
+
+            .corner-card {
+                top: 15px;
+                left: 15px;
+                padding: 15px;
+                min-width: 120px;
+            }
+
+            .character-display {
+                width: 60px;
+                height: 60px;
+                font-size: 1.8rem;
+                margin-bottom: 12px;
+            }
+
+            .character-option {
+                width: 28px;
+                height: 28px;
+                font-size: 0.85rem;
+            }
         }
     </style>
 </head>
@@ -338,6 +457,23 @@
         <div>Active Card: <span id="debugCard">0</span></div>
         <div>Rotation: <span id="debugRotation">0</span>°</div>
         <div>Matrix: <span id="debugMatrix">-</span></div>
+    </div>
+
+    <!-- Corner Card - Character Selector -->
+    <div class="corner-card" id="cornerCard">
+        <div class="corner-card-title">Character</div>
+        <div class="character-display" id="characterDisplay">
+            <span class="character-face" id="characterFace">😊</span>
+        </div>
+        <div class="character-selector" id="characterSelector">
+            <div class="character-option active" data-face="😊" data-name="Happy">😊</div>
+            <div class="character-option" data-face="😎" data-name="Cool">😎</div>
+            <div class="character-option" data-face="🤖" data-name="Robot">🤖</div>
+            <div class="character-option" data-face="👽" data-name="Alien">👽</div>
+            <div class="character-option" data-face="🐱" data-name="Cat">🐱</div>
+            <div class="character-option" data-face="🦊" data-name="Fox">🦊</div>
+        </div>
+        <div class="character-name" id="characterName">Happy</div>
     </div>
 
     <!-- Card navigation indicators -->
@@ -741,6 +877,60 @@
                 debugInfo.classList.toggle('visible');
             }
         });
+
+        // ============================================
+        // Character Selector
+        // ============================================
+
+        const characterFace = document.getElementById('characterFace');
+        const characterName = document.getElementById('characterName');
+        const characterOptions = document.querySelectorAll('.character-option');
+        const characterDisplay = document.getElementById('characterDisplay');
+
+        let currentCharacterIndex = 0;
+        const characters = Array.from(characterOptions);
+
+        /**
+         * Select a character by option element
+         */
+        function selectCharacter(option) {
+            // Remove active from all options
+            characterOptions.forEach(opt => opt.classList.remove('active'));
+
+            // Add active to selected option
+            option.classList.add('active');
+
+            // Update the display
+            const face = option.dataset.face;
+            const name = option.dataset.name;
+
+            // Animate the face change
+            characterFace.style.transform = 'scale(0)';
+            setTimeout(() => {
+                characterFace.textContent = face;
+                characterName.textContent = name;
+                characterFace.style.transform = 'scale(1)';
+            }, 150);
+
+            // Update current index
+            currentCharacterIndex = characters.indexOf(option);
+        }
+
+        /**
+         * Cycle to next character
+         */
+        function nextCharacter() {
+            currentCharacterIndex = (currentCharacterIndex + 1) % characters.length;
+            selectCharacter(characters[currentCharacterIndex]);
+        }
+
+        // Click on character options
+        characterOptions.forEach(option => {
+            option.addEventListener('click', () => selectCharacter(option));
+        });
+
+        // Click on main display to cycle
+        characterDisplay.addEventListener('click', nextCharacter);
 
         // Initialize
         updateCards();
