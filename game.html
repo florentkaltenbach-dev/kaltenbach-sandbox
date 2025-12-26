@@ -207,6 +207,69 @@
         .instructions .green { color: #4ade80; }
         .instructions .red { color: #ef4444; }
 
+        .team-info {
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 12px 16px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            margin-top: 10px;
+        }
+
+        .team-info h2 {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.7;
+            margin-bottom: 4px;
+        }
+
+        .team-count {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #4ade80;
+        }
+
+        .egg-control {
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 12px 16px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            margin-top: 10px;
+            pointer-events: auto;
+        }
+
+        .egg-btn {
+            padding: 10px 20px;
+            font-size: 1rem;
+            font-weight: 600;
+            background: linear-gradient(90deg, #fbbf24, #d97706);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s;
+            width: 100%;
+        }
+
+        .egg-btn:hover:not(:disabled) {
+            transform: scale(1.02);
+            box-shadow: 0 3px 15px rgba(251, 191, 36, 0.4);
+        }
+
+        .egg-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .egg-cost {
+            font-size: 0.75rem;
+            opacity: 0.7;
+            text-align: center;
+            margin-top: 6px;
+        }
+
         .minimap {
             position: fixed;
             bottom: 20px;
@@ -250,6 +313,16 @@
         <div class="score-display">
             <h2>Deine Größe</h2>
             <div class="size" id="sizeDisplay">1.0</div>
+        </div>
+        <div class="team-info">
+            <h2>Dein Team</h2>
+            <div class="team-count" id="teamCount">0 Verbündete</div>
+        </div>
+        <div class="egg-control" id="eggControl">
+            <button class="egg-btn" id="eggBtn" onclick="layEgg()">
+                🥚 Ei legen
+            </button>
+            <div class="egg-cost">Kostet 0.5 Größe</div>
         </div>
     </div>
 
@@ -318,28 +391,50 @@
             worldPadding: 100,
             worldWidth: 3000,
             worldHeight: 2000,
-            spawnInterval: 120  // frames between spawns
+            spawnInterval: 120,  // frames between spawns
+            numEnemyTeams: 3,    // number of enemy teams
+            eggCost: 0.5,        // size cost to lay an egg
+            eggHatchTime: 180,   // frames until egg hatches (3 seconds at 60fps)
+            hatchSize: 0.6,      // size of newly hatched crocodile
+            // Boids parameters
+            swarmSeparationDist: 80,
+            swarmAlignmentDist: 150,
+            swarmCohesionDist: 200,
+            swarmSeparationForce: 0.03,
+            swarmAlignmentForce: 0.02,
+            swarmCohesionForce: 0.01
         };
+
+        // Team colors
+        const TEAM_COLORS = [
+            { body: '#4ade80', dark: '#22c55e', name: 'Grün' },      // Player team (green)
+            { body: '#f87171', dark: '#dc2626', name: 'Rot' },       // Enemy team 1 (red)
+            { body: '#60a5fa', dark: '#2563eb', name: 'Blau' },      // Enemy team 2 (blue)
+            { body: '#fbbf24', dark: '#d97706', name: 'Gelb' }       // Enemy team 3 (yellow)
+        ];
 
         // Game State
         let gameRunning = true;
         let player = null;
         let aiCrocs = [];
+        let eggs = [];  // Eggs waiting to hatch
         let joystickInput = { x: 0, y: 0 };
         let keyboardInput = { x: 0, y: 0 };
         let camera = { x: 0, y: 0 };
         let spawnTimer = 0;
+        let canLayEgg = true;  // Cooldown for egg laying
 
         // ============================================
         // Crocodile Class
         // ============================================
 
         class Crocodile {
-            constructor(x, y, size, isPlayer = false) {
+            constructor(x, y, size, isPlayer = false, teamId = 0) {
                 this.x = x;
                 this.y = y;
                 this.size = size;
                 this.isPlayer = isPlayer;
+                this.teamId = teamId;  // 0 = player team, 1+ = enemy teams
                 this.vx = 0;
                 this.vy = 0;
                 this.angle = 0;
@@ -350,6 +445,14 @@
                 this.target = null;
                 this.fleeTarget = null;
                 this.thinkTimer = 0;
+
+                // Swarm behavior vectors
+                this.swarmVx = 0;
+                this.swarmVy = 0;
+            }
+
+            get teamColor() {
+                return TEAM_COLORS[this.teamId] || TEAM_COLORS[0];
             }
 
             get radius() {
@@ -392,7 +495,72 @@
                 this.angle += angleDiff * 0.15;
             }
 
-            updateAI(allCrocs) {
+            // Calculate swarm behavior forces (Boids algorithm)
+            calculateSwarmBehavior(teammates) {
+                let separationX = 0, separationY = 0;
+                let alignmentX = 0, alignmentY = 0;
+                let cohesionX = 0, cohesionY = 0;
+                let separationCount = 0, alignmentCount = 0, cohesionCount = 0;
+
+                for (const mate of teammates) {
+                    if (mate === this || !mate.alive) continue;
+
+                    const dx = mate.x - this.x;
+                    const dy = mate.y - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    // Separation: steer away from nearby teammates
+                    if (dist < CONFIG.swarmSeparationDist && dist > 0) {
+                        separationX -= dx / dist;
+                        separationY -= dy / dist;
+                        separationCount++;
+                    }
+
+                    // Alignment: match velocity of nearby teammates
+                    if (dist < CONFIG.swarmAlignmentDist) {
+                        alignmentX += mate.vx;
+                        alignmentY += mate.vy;
+                        alignmentCount++;
+                    }
+
+                    // Cohesion: move towards center of nearby teammates
+                    if (dist < CONFIG.swarmCohesionDist) {
+                        cohesionX += mate.x;
+                        cohesionY += mate.y;
+                        cohesionCount++;
+                    }
+                }
+
+                // Average and apply forces
+                this.swarmVx = 0;
+                this.swarmVy = 0;
+
+                if (separationCount > 0) {
+                    this.swarmVx += (separationX / separationCount) * CONFIG.swarmSeparationForce;
+                    this.swarmVy += (separationY / separationCount) * CONFIG.swarmSeparationForce;
+                }
+
+                if (alignmentCount > 0) {
+                    const avgVx = alignmentX / alignmentCount;
+                    const avgVy = alignmentY / alignmentCount;
+                    this.swarmVx += (avgVx - this.vx) * CONFIG.swarmAlignmentForce;
+                    this.swarmVy += (avgVy - this.vy) * CONFIG.swarmAlignmentForce;
+                }
+
+                if (cohesionCount > 0) {
+                    const centerX = cohesionX / cohesionCount;
+                    const centerY = cohesionY / cohesionCount;
+                    const toCenterX = centerX - this.x;
+                    const toCenterY = centerY - this.y;
+                    const toCenterDist = Math.sqrt(toCenterX * toCenterX + toCenterY * toCenterY);
+                    if (toCenterDist > 0) {
+                        this.swarmVx += (toCenterX / toCenterDist) * CONFIG.swarmCohesionForce;
+                        this.swarmVy += (toCenterY / toCenterDist) * CONFIG.swarmCohesionForce;
+                    }
+                }
+            }
+
+            updateAI(allCrocs, teammates) {
                 if (!this.alive) return;
 
                 this.thinkTimer--;
@@ -401,11 +569,14 @@
                     this.chooseTarget(allCrocs);
                 }
 
+                // Calculate swarm behavior with teammates
+                this.calculateSwarmBehavior(teammates);
+
                 // Move towards target or flee
                 let targetX = 0, targetY = 0;
 
                 if (this.fleeTarget && this.fleeTarget.alive) {
-                    // Flee from bigger croc
+                    // Flee from bigger croc (from different team)
                     const dx = this.x - this.fleeTarget.x;
                     const dy = this.y - this.fleeTarget.y;
                     const dist = Math.sqrt(dx * dx + dy * dy);
@@ -414,7 +585,7 @@
                         targetY = dy / dist;
                     }
                 } else if (this.target && this.target.alive) {
-                    // Chase smaller croc
+                    // Chase smaller croc (from different team)
                     const dx = this.target.x - this.x;
                     const dy = this.target.y - this.y;
                     const dist = Math.sqrt(dx * dx + dy * dy);
@@ -423,13 +594,21 @@
                         targetY = dy / dist;
                     }
                 } else {
-                    // Wander randomly
+                    // Wander randomly with swarm influence
                     targetX = Math.cos(this.angle);
                     targetY = Math.sin(this.angle);
                 }
 
-                this.vx = targetX * this.speed;
-                this.vy = targetY * this.speed;
+                // Combine target direction with swarm behavior
+                this.vx = targetX * this.speed + this.swarmVx * this.speed;
+                this.vy = targetY * this.speed + this.swarmVy * this.speed;
+
+                // Normalize if too fast
+                const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (currentSpeed > this.speed * 1.2) {
+                    this.vx = (this.vx / currentSpeed) * this.speed * 1.2;
+                    this.vy = (this.vy / currentSpeed) * this.speed * 1.2;
+                }
 
                 this.update(0, 0);
             }
@@ -446,18 +625,21 @@
                 for (const croc of allCrocs) {
                     if (croc === this || !croc.alive) continue;
 
+                    // Skip teammates - can't eat or be eaten by same team
+                    if (croc.teamId === this.teamId) continue;
+
                     const dx = croc.x - this.x;
                     const dy = croc.y - this.y;
                     const dist = Math.sqrt(dx * dx + dy * dy);
 
                     if (croc.size < this.size - 0.1) {
-                        // Potential prey
+                        // Potential prey (from another team)
                         if (dist < closestPreyDist) {
                             closestPreyDist = dist;
                             closestPrey = croc;
                         }
                     } else if (croc.size > this.size + 0.1) {
-                        // Potential threat
+                        // Potential threat (from another team)
                         if (dist < closestThreatDist && dist < 300) {
                             closestThreatDist = dist;
                             closestThreat = croc;
@@ -492,9 +674,10 @@
 
                 const baseSize = this.radius;
 
-                // Determine color - all crocodiles are light green
-                let bodyColor = '#4ade80';
-                let darkColor = '#22c55e';
+                // Determine color based on team
+                const colors = this.teamColor;
+                let bodyColor = colors.body;
+                let darkColor = colors.dark;
 
                 // Body (ellipse)
                 ctx.beginPath();
@@ -596,6 +779,90 @@
         }
 
         // ============================================
+        // Egg Class
+        // ============================================
+
+        class Egg {
+            constructor(x, y, teamId) {
+                this.x = x;
+                this.y = y;
+                this.teamId = teamId;
+                this.hatchTimer = CONFIG.eggHatchTime;
+                this.hatched = false;
+                this.wobble = 0;
+            }
+
+            get teamColor() {
+                return TEAM_COLORS[this.teamId] || TEAM_COLORS[0];
+            }
+
+            update() {
+                if (this.hatched) return;
+
+                this.hatchTimer--;
+                this.wobble += 0.2;
+
+                if (this.hatchTimer <= 0) {
+                    this.hatched = true;
+                }
+            }
+
+            draw(ctx, camera) {
+                if (this.hatched) return;
+
+                const screenX = this.x - camera.x;
+                const screenY = this.y - camera.y;
+
+                // Don't draw if off screen
+                if (screenX < -50 || screenX > canvas.width + 50 ||
+                    screenY < -50 || screenY > canvas.height + 50) {
+                    return;
+                }
+
+                ctx.save();
+                ctx.translate(screenX, screenY);
+
+                // Wobble animation as hatching approaches
+                const wobbleAmount = (1 - this.hatchTimer / CONFIG.eggHatchTime) * 0.2;
+                ctx.rotate(Math.sin(this.wobble) * wobbleAmount);
+
+                const colors = this.teamColor;
+
+                // Egg shadow
+                ctx.beginPath();
+                ctx.ellipse(2, 3, 18, 22, 0, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                ctx.fill();
+
+                // Egg body
+                ctx.beginPath();
+                ctx.ellipse(0, 0, 16, 20, 0, 0, Math.PI * 2);
+                ctx.fillStyle = '#f5f5dc';  // Beige egg color
+                ctx.fill();
+                ctx.strokeStyle = colors.dark;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Team color spots on egg
+                ctx.beginPath();
+                ctx.arc(-5, -5, 4, 0, Math.PI * 2);
+                ctx.arc(4, 2, 3, 0, Math.PI * 2);
+                ctx.arc(-2, 8, 3, 0, Math.PI * 2);
+                ctx.fillStyle = colors.body;
+                ctx.fill();
+
+                // Hatch progress indicator
+                const progress = 1 - this.hatchTimer / CONFIG.eggHatchTime;
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                ctx.font = 'bold 10px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(Math.floor(progress * 100) + '%', 0, 32);
+
+                ctx.restore();
+            }
+        }
+
+        // ============================================
         // Collision Detection
         // ============================================
 
@@ -606,6 +873,9 @@
                 for (let j = i + 1; j < allCrocs.length; j++) {
                     const a = allCrocs[i];
                     const b = allCrocs[j];
+
+                    // Same team crocodiles can't eat each other
+                    if (a.teamId === b.teamId) continue;
 
                     const dx = a.x - b.x;
                     const dy = a.y - b.y;
@@ -645,23 +915,39 @@
         // ============================================
 
         function initGame() {
-            // Create player in center of world
+            // Create player in center of world (team 0 = player team)
             player = new Crocodile(
                 CONFIG.worldWidth / 2,
                 CONFIG.worldHeight / 2,
                 1.0,
-                true
+                true,
+                0  // Player team
             );
 
-            // Create AI crocodiles - slight size variation for gameplay
+            // Create AI crocodiles - distributed among enemy teams and player team
             aiCrocs = [];
+            eggs = [];
+
+            // Create some initial player team allies
+            for (let i = 0; i < 3; i++) {
+                const angle = (i / 3) * Math.PI * 2;
+                const dist = 150 + Math.random() * 100;
+                const x = player.x + Math.cos(angle) * dist;
+                const y = player.y + Math.sin(angle) * dist;
+                const size = 0.7 + Math.random() * 0.3;
+                aiCrocs.push(new Crocodile(x, y, size, false, 0));  // Player team allies
+            }
+
+            // Create enemy team crocodiles
             for (let i = 0; i < CONFIG.numAICrocs; i++) {
                 const x = CONFIG.worldPadding + Math.random() * (CONFIG.worldWidth - CONFIG.worldPadding * 2);
                 const y = CONFIG.worldPadding + Math.random() * (CONFIG.worldHeight - CONFIG.worldPadding * 2);
                 // Small random variation: 0.9 to 1.1
                 const size = 0.9 + Math.random() * 0.2;
+                // Assign to one of the enemy teams (1, 2, or 3)
+                const teamId = 1 + (i % CONFIG.numEnemyTeams);
 
-                aiCrocs.push(new Crocodile(x, y, size, false));
+                aiCrocs.push(new Crocodile(x, y, size, false, teamId));
             }
 
             // Initialize camera
@@ -670,6 +956,7 @@
 
             gameRunning = true;
             spawnTimer = 0;
+            canLayEgg = true;
             gameOverScreen.classList.remove('visible');
             winScreen.classList.remove('visible');
         }
@@ -705,7 +992,54 @@
             // Small size: 0.5 to 0.8
             const size = 0.5 + Math.random() * 0.3;
 
-            aiCrocs.push(new Crocodile(x, y, size, false));
+            // Random team (mostly enemy teams, rarely player team)
+            const teamId = Math.random() < 0.1 ? 0 : (1 + Math.floor(Math.random() * CONFIG.numEnemyTeams));
+
+            aiCrocs.push(new Crocodile(x, y, size, false, teamId));
+        }
+
+        // Lay an egg (costs size/points)
+        function layEgg() {
+            if (!gameRunning || !player.alive) return;
+            if (!canLayEgg) return;
+            if (player.size < CONFIG.eggCost + 0.5) return;  // Need minimum size to lay egg
+
+            // Spend size to create egg
+            player.size -= CONFIG.eggCost;
+
+            // Create egg behind the player
+            const eggX = player.x - Math.cos(player.angle) * 50;
+            const eggY = player.y - Math.sin(player.angle) * 50;
+
+            eggs.push(new Egg(eggX, eggY, player.teamId));
+
+            // Brief cooldown
+            canLayEgg = false;
+            setTimeout(() => { canLayEgg = true; }, 500);
+        }
+
+        // Hatch eggs and spawn new crocodiles
+        function updateEggs() {
+            for (const egg of eggs) {
+                egg.update();
+
+                if (egg.hatched) {
+                    // Spawn a new crocodile at egg location
+                    const newCroc = new Crocodile(
+                        egg.x,
+                        egg.y,
+                        CONFIG.hatchSize,
+                        false,
+                        egg.teamId
+                    );
+                    // Give it initial velocity away from egg
+                    newCroc.angle = Math.random() * Math.PI * 2;
+                    aiCrocs.push(newCroc);
+                }
+            }
+
+            // Remove hatched eggs
+            eggs = eggs.filter(e => !e.hatched);
         }
 
         function gameLoop() {
@@ -731,14 +1065,38 @@
             camera.x = Math.max(0, Math.min(CONFIG.worldWidth - canvas.width, camera.x));
             camera.y = Math.max(0, Math.min(CONFIG.worldHeight - canvas.height, camera.y));
 
-            // Update AI
+            // Update AI with swarm behavior
             const allCrocs = [player, ...aiCrocs];
+
+            // Group crocodiles by team for swarm behavior
+            const teamGroups = {};
+            for (const croc of allCrocs) {
+                if (!croc.alive) continue;
+                if (!teamGroups[croc.teamId]) {
+                    teamGroups[croc.teamId] = [];
+                }
+                teamGroups[croc.teamId].push(croc);
+            }
+
+            // Update each AI croc with its teammates
             for (const croc of aiCrocs) {
-                croc.updateAI(allCrocs);
+                const teammates = teamGroups[croc.teamId] || [];
+                croc.updateAI(allCrocs, teammates);
+            }
+
+            // Update player's teammates for swarm behavior too (they follow player)
+            const playerTeammates = teamGroups[0] || [];
+            for (const mate of playerTeammates) {
+                if (mate !== player && mate.alive) {
+                    mate.calculateSwarmBehavior(playerTeammates);
+                }
             }
 
             // Check collisions
             checkCollisions();
+
+            // Update eggs
+            updateEggs();
 
             // Spawn new small crocodiles periodically
             spawnTimer++;
@@ -760,6 +1118,11 @@
             // Draw world border
             drawWorldBorder();
 
+            // Draw eggs first (behind crocodiles)
+            for (const egg of eggs) {
+                egg.draw(ctx, camera);
+            }
+
             // Draw all crocodiles (sorted by size for proper layering)
             const drawOrder = [...allCrocs].filter(c => c.alive).sort((a, b) => a.size - b.size);
             for (const croc of drawOrder) {
@@ -771,6 +1134,17 @@
 
             // Update UI
             sizeDisplay.textContent = player.size.toFixed(1);
+
+            // Update team count
+            const allyCount = (teamGroups[0] || []).filter(c => c !== player && c.alive).length;
+            const eggCount = eggs.filter(e => e.teamId === 0).length;
+            document.getElementById('teamCount').textContent =
+                `${allyCount} Verbündete` + (eggCount > 0 ? ` + ${eggCount} 🥚` : '');
+
+            // Update egg button state
+            const eggBtn = document.getElementById('eggBtn');
+            const canAffordEgg = player.size >= CONFIG.eggCost + 0.5;
+            eggBtn.disabled = !canAffordEgg || !canLayEgg;
 
             requestAnimationFrame(gameLoop);
         }
@@ -799,7 +1173,21 @@
                 canvas.height * scaleY
             );
 
-            // Draw AI crocodiles
+            // Draw eggs on minimap
+            for (const egg of eggs) {
+                if (egg.hatched) continue;
+                const ex = egg.x * scaleX;
+                const ey = egg.y * scaleY;
+
+                minimapCtx.beginPath();
+                minimapCtx.arc(ex, ey, 3, 0, Math.PI * 2);
+                minimapCtx.fillStyle = egg.teamColor.body;
+                minimapCtx.globalAlpha = 0.6;
+                minimapCtx.fill();
+                minimapCtx.globalAlpha = 1;
+            }
+
+            // Draw AI crocodiles with team colors
             for (const croc of aiCrocs) {
                 if (!croc.alive) continue;
                 const mx = croc.x * scaleX;
@@ -808,7 +1196,7 @@
 
                 minimapCtx.beginPath();
                 minimapCtx.arc(mx, my, size, 0, Math.PI * 2);
-                minimapCtx.fillStyle = '#4ade80';
+                minimapCtx.fillStyle = croc.teamColor.body;
                 minimapCtx.fill();
             }
 
@@ -965,6 +1353,12 @@
         document.addEventListener('keydown', (e) => {
             keys[e.key] = true;
             updateKeyboardInput();
+
+            // Space bar to lay egg
+            if (e.key === ' ' || e.code === 'Space') {
+                e.preventDefault();
+                layEgg();
+            }
         });
 
         document.addEventListener('keyup', (e) => {
