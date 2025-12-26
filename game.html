@@ -313,11 +313,13 @@
             aiSpeedFactor: 0.7,
             growthFactor: 0.15,
             numAICrocs: 15,
+            maxAICrocs: 25,
             minSize: 0.5,
             maxSize: 4.0,
             worldPadding: 100,
             worldWidth: 3000,
-            worldHeight: 2000
+            worldHeight: 2000,
+            spawnInterval: 120  // frames between spawns
         };
 
         // Game State
@@ -327,6 +329,7 @@
         let joystickInput = { x: 0, y: 0 };
         let keyboardInput = { x: 0, y: 0 };
         let camera = { x: 0, y: 0 };
+        let spawnTimer = 0;
 
         // ============================================
         // Crocodile Class
@@ -564,6 +567,28 @@
                 }
 
                 ctx.restore();
+
+                // Draw size label above crocodile
+                ctx.save();
+                ctx.translate(screenX, screenY);
+
+                // Size text
+                const sizeText = this.size.toFixed(1);
+                const fontSize = Math.max(12, 10 + this.size * 4);
+                ctx.font = `bold ${fontSize}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'bottom';
+
+                // Text shadow/outline
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                ctx.fillText(sizeText, 0, -baseSize - 8);
+                ctx.fillText(sizeText, 2, -baseSize - 6);
+
+                // White text
+                ctx.fillStyle = 'white';
+                ctx.fillText(sizeText, 1, -baseSize - 7);
+
+                ctx.restore();
             }
 
             grow(amount) {
@@ -645,8 +670,43 @@
             camera.y = player.y - canvas.height / 2;
 
             gameRunning = true;
+            spawnTimer = 0;
             gameOverScreen.classList.remove('visible');
             winScreen.classList.remove('visible');
+        }
+
+        function spawnNewCroc() {
+            // Don't spawn if too many crocs
+            const aliveCrocs = aiCrocs.filter(c => c.alive);
+            if (aliveCrocs.length >= CONFIG.maxAICrocs) return;
+
+            // Spawn at random edge of world (away from player)
+            let x, y;
+            const edge = Math.floor(Math.random() * 4);
+
+            switch(edge) {
+                case 0: // Top
+                    x = Math.random() * CONFIG.worldWidth;
+                    y = CONFIG.worldPadding;
+                    break;
+                case 1: // Right
+                    x = CONFIG.worldWidth - CONFIG.worldPadding;
+                    y = Math.random() * CONFIG.worldHeight;
+                    break;
+                case 2: // Bottom
+                    x = Math.random() * CONFIG.worldWidth;
+                    y = CONFIG.worldHeight - CONFIG.worldPadding;
+                    break;
+                case 3: // Left
+                    x = CONFIG.worldPadding;
+                    y = Math.random() * CONFIG.worldHeight;
+                    break;
+            }
+
+            // Small size: 0.5 to 0.8
+            const size = 0.5 + Math.random() * 0.3;
+
+            aiCrocs.push(new Crocodile(x, y, size, false));
         }
 
         function gameLoop() {
@@ -681,11 +741,15 @@
             // Check collisions
             checkCollisions();
 
-            // Check win condition
-            const aliveCrocs = aiCrocs.filter(c => c.alive);
-            if (aliveCrocs.length === 0) {
-                endGame(true);
+            // Spawn new small crocodiles periodically
+            spawnTimer++;
+            if (spawnTimer >= CONFIG.spawnInterval) {
+                spawnTimer = 0;
+                spawnNewCroc();
             }
+
+            // Clean up dead crocodiles
+            aiCrocs = aiCrocs.filter(c => c.alive);
 
             // Clear canvas
             ctx.fillStyle = '#1a5a1c';
