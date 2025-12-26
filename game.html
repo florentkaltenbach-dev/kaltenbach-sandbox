@@ -402,7 +402,18 @@
             swarmCohesionDist: 200,
             swarmSeparationForce: 0.03,
             swarmAlignmentForce: 0.02,
-            swarmCohesionForce: 0.01
+            swarmCohesionForce: 0.01,
+            // Food (fish/frogs) parameters
+            maxFood: 20,
+            foodSpawnInterval: 60,  // frames between food spawns
+            foodGrowth: 0.08,       // size gain from eating food
+            // Protection aura parameters
+            protectionAuraRadius: 120,
+            protectionSizeThreshold: 1.5,  // teammates must be this big to protect
+            // Hiding spots parameters
+            numHidingSpots: 5,
+            hidingSpotRadius: 80,
+            maxSizeForHiding: 0.9  // only crocs this size or smaller can hide
         };
 
         // Team colors
@@ -418,10 +429,13 @@
         let player = null;
         let aiCrocs = [];
         let eggs = [];  // Eggs waiting to hatch
+        let food = [];  // Fish and frogs to eat
+        let hidingSpots = [];  // Safe zones for small crocs
         let joystickInput = { x: 0, y: 0 };
         let keyboardInput = { x: 0, y: 0 };
         let camera = { x: 0, y: 0 };
         let spawnTimer = 0;
+        let foodSpawnTimer = 0;
         let canLayEgg = true;  // Cooldown for egg laying
 
         // ============================================
@@ -863,12 +877,261 @@
         }
 
         // ============================================
+        // Food Class (Fish and Frogs)
+        // ============================================
+
+        class Food {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.type = Math.random() < 0.6 ? 'fish' : 'frog';
+                this.alive = true;
+                this.animTimer = Math.random() * Math.PI * 2;
+                this.vx = (Math.random() - 0.5) * 0.5;
+                this.vy = (Math.random() - 0.5) * 0.5;
+                this.radius = this.type === 'fish' ? 12 : 10;
+            }
+
+            update() {
+                if (!this.alive) return;
+
+                this.animTimer += 0.1;
+
+                // Random movement
+                if (Math.random() < 0.02) {
+                    this.vx = (Math.random() - 0.5) * 1;
+                    this.vy = (Math.random() - 0.5) * 1;
+                }
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Bounce off world edges
+                if (this.x < 50 || this.x > CONFIG.worldWidth - 50) this.vx *= -1;
+                if (this.y < 50 || this.y > CONFIG.worldHeight - 50) this.vy *= -1;
+
+                this.x = Math.max(50, Math.min(CONFIG.worldWidth - 50, this.x));
+                this.y = Math.max(50, Math.min(CONFIG.worldHeight - 50, this.y));
+            }
+
+            draw(ctx, camera) {
+                if (!this.alive) return;
+
+                const screenX = this.x - camera.x;
+                const screenY = this.y - camera.y;
+
+                if (screenX < -30 || screenX > canvas.width + 30 ||
+                    screenY < -30 || screenY > canvas.height + 30) {
+                    return;
+                }
+
+                ctx.save();
+                ctx.translate(screenX, screenY);
+
+                if (this.type === 'fish') {
+                    // Swimming animation
+                    const wobble = Math.sin(this.animTimer * 2) * 0.2;
+                    ctx.rotate(Math.atan2(this.vy, this.vx) + wobble);
+
+                    // Fish body
+                    ctx.beginPath();
+                    ctx.ellipse(0, 0, 12, 6, 0, 0, Math.PI * 2);
+                    ctx.fillStyle = '#60a5fa';
+                    ctx.fill();
+                    ctx.strokeStyle = '#3b82f6';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+
+                    // Tail
+                    ctx.beginPath();
+                    ctx.moveTo(-10, 0);
+                    ctx.lineTo(-16, -5);
+                    ctx.lineTo(-16, 5);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    // Eye
+                    ctx.beginPath();
+                    ctx.arc(6, -1, 2, 0, Math.PI * 2);
+                    ctx.fillStyle = 'white';
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.arc(6.5, -1, 1, 0, Math.PI * 2);
+                    ctx.fillStyle = 'black';
+                    ctx.fill();
+                } else {
+                    // Frog - hopping animation
+                    const hop = Math.abs(Math.sin(this.animTimer)) * 3;
+                    ctx.translate(0, -hop);
+
+                    // Body
+                    ctx.beginPath();
+                    ctx.ellipse(0, 0, 8, 6, 0, 0, Math.PI * 2);
+                    ctx.fillStyle = '#84cc16';
+                    ctx.fill();
+                    ctx.strokeStyle = '#65a30d';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+
+                    // Eyes
+                    ctx.beginPath();
+                    ctx.arc(-3, -5, 3, 0, Math.PI * 2);
+                    ctx.arc(3, -5, 3, 0, Math.PI * 2);
+                    ctx.fillStyle = '#84cc16';
+                    ctx.fill();
+                    ctx.stroke();
+
+                    ctx.beginPath();
+                    ctx.arc(-3, -5, 1.5, 0, Math.PI * 2);
+                    ctx.arc(3, -5, 1.5, 0, Math.PI * 2);
+                    ctx.fillStyle = 'black';
+                    ctx.fill();
+
+                    // Legs
+                    ctx.strokeStyle = '#65a30d';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(-6, 3);
+                    ctx.lineTo(-10, 6);
+                    ctx.moveTo(6, 3);
+                    ctx.lineTo(10, 6);
+                    ctx.stroke();
+                }
+
+                ctx.restore();
+            }
+        }
+
+        // ============================================
+        // Hiding Spot Class
+        // ============================================
+
+        class HidingSpot {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = CONFIG.hidingSpotRadius;
+                this.animTimer = Math.random() * Math.PI * 2;
+            }
+
+            // Check if a crocodile is inside and small enough
+            canHide(croc) {
+                if (croc.size > CONFIG.maxSizeForHiding) return false;
+
+                const dx = croc.x - this.x;
+                const dy = croc.y - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                return dist < this.radius;
+            }
+
+            draw(ctx, camera) {
+                const screenX = this.x - camera.x;
+                const screenY = this.y - camera.y;
+
+                if (screenX < -this.radius * 2 || screenX > canvas.width + this.radius * 2 ||
+                    screenY < -this.radius * 2 || screenY > canvas.height + this.radius * 2) {
+                    return;
+                }
+
+                this.animTimer += 0.02;
+
+                ctx.save();
+                ctx.translate(screenX, screenY);
+
+                // Lily pads / reeds cluster
+                ctx.globalAlpha = 0.8;
+
+                // Draw several lily pads
+                for (let i = 0; i < 5; i++) {
+                    const angle = (i / 5) * Math.PI * 2 + this.animTimer * 0.1;
+                    const dist = 20 + i * 10;
+                    const lx = Math.cos(angle) * dist;
+                    const ly = Math.sin(angle) * dist;
+                    const size = 20 + Math.sin(this.animTimer + i) * 3;
+
+                    // Lily pad
+                    ctx.beginPath();
+                    ctx.ellipse(lx, ly, size, size * 0.7, angle, 0, Math.PI * 2);
+                    ctx.fillStyle = '#166534';
+                    ctx.fill();
+                    ctx.strokeStyle = '#14532d';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+
+                    // Notch in lily pad
+                    ctx.beginPath();
+                    ctx.moveTo(lx, ly);
+                    ctx.lineTo(lx + Math.cos(angle) * size, ly + Math.sin(angle) * size * 0.7);
+                    ctx.strokeStyle = '#0d3320';
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                }
+
+                // Center area indicator
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(34, 197, 94, 0.3)';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // Label
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+                ctx.font = 'bold 10px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('🌿 Versteck', 0, this.radius + 15);
+                ctx.fillText(`(max ${CONFIG.maxSizeForHiding})`, 0, this.radius + 27);
+
+                ctx.globalAlpha = 1;
+                ctx.restore();
+            }
+        }
+
+        // ============================================
+        // Protection Helper Functions
+        // ============================================
+
+        // Check if a crocodile is protected by a larger teammate
+        function isProtectedByTeammate(croc, allCrocs) {
+            for (const mate of allCrocs) {
+                if (mate === croc || !mate.alive) continue;
+                if (mate.teamId !== croc.teamId) continue;
+
+                // Teammate must be significantly larger
+                if (mate.size < CONFIG.protectionSizeThreshold) continue;
+                if (mate.size <= croc.size) continue;
+
+                const dx = mate.x - croc.x;
+                const dy = mate.y - croc.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < CONFIG.protectionAuraRadius) {
+                    return mate;  // Return the protector
+                }
+            }
+            return null;
+        }
+
+        // Check if a crocodile is hiding
+        function isHiding(croc) {
+            for (const spot of hidingSpots) {
+                if (spot.canHide(croc)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // ============================================
         // Collision Detection
         // ============================================
 
         function checkCollisions() {
             const allCrocs = [player, ...aiCrocs].filter(c => c.alive);
 
+            // Check crocodile vs crocodile collisions
             for (let i = 0; i < allCrocs.length; i++) {
                 for (let j = i + 1; j < allCrocs.length; j++) {
                     const a = allCrocs[i];
@@ -887,24 +1150,49 @@
                         const sizeDiff = a.size - b.size;
 
                         if (Math.abs(sizeDiff) > 0.01) {
-                            if (sizeDiff > 0) {
-                                // A eats B
-                                a.grow(b.size * CONFIG.growthFactor);
-                                b.alive = false;
+                            // Determine who would be eaten
+                            const predator = sizeDiff > 0 ? a : b;
+                            const prey = sizeDiff > 0 ? b : a;
 
-                                if (b.isPlayer) {
-                                    endGame(false);
-                                }
-                            } else {
-                                // B eats A
-                                b.grow(a.size * CONFIG.growthFactor);
-                                a.alive = false;
+                            // Check if prey is protected
+                            const isPreyHiding = isHiding(prey);
+                            const protector = isProtectedByTeammate(prey, allCrocs);
 
-                                if (a.isPlayer) {
-                                    endGame(false);
-                                }
+                            if (isPreyHiding) {
+                                // Prey is hiding - can't be eaten!
+                                continue;
+                            }
+
+                            if (protector) {
+                                // Prey is protected by teammate - can't be eaten!
+                                continue;
+                            }
+
+                            // Predator eats prey
+                            predator.grow(prey.size * CONFIG.growthFactor);
+                            prey.alive = false;
+
+                            if (prey.isPlayer) {
+                                endGame(false);
                             }
                         }
+                    }
+                }
+            }
+
+            // Check crocodile vs food collisions
+            for (const croc of allCrocs) {
+                for (const f of food) {
+                    if (!f.alive) continue;
+
+                    const dx = croc.x - f.x;
+                    const dy = croc.y - f.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < croc.radius + f.radius) {
+                        // Eat the food!
+                        croc.grow(CONFIG.foodGrowth);
+                        f.alive = false;
                     }
                 }
             }
@@ -927,6 +1215,23 @@
             // Create AI crocodiles - distributed among enemy teams and player team
             aiCrocs = [];
             eggs = [];
+            food = [];
+            hidingSpots = [];
+            foodSpawnTimer = 0;
+
+            // Create hiding spots scattered around the world
+            for (let i = 0; i < CONFIG.numHidingSpots; i++) {
+                const x = 200 + Math.random() * (CONFIG.worldWidth - 400);
+                const y = 200 + Math.random() * (CONFIG.worldHeight - 400);
+                hidingSpots.push(new HidingSpot(x, y));
+            }
+
+            // Create initial food
+            for (let i = 0; i < CONFIG.maxFood / 2; i++) {
+                const x = 100 + Math.random() * (CONFIG.worldWidth - 200);
+                const y = 100 + Math.random() * (CONFIG.worldHeight - 200);
+                food.push(new Food(x, y));
+            }
 
             // Create some initial player team allies
             for (let i = 0; i < 3; i++) {
@@ -1098,6 +1403,20 @@
             // Update eggs
             updateEggs();
 
+            // Update and spawn food
+            for (const f of food) {
+                f.update();
+            }
+            food = food.filter(f => f.alive);
+
+            foodSpawnTimer++;
+            if (foodSpawnTimer >= CONFIG.foodSpawnInterval && food.length < CONFIG.maxFood) {
+                foodSpawnTimer = 0;
+                const x = 100 + Math.random() * (CONFIG.worldWidth - 200);
+                const y = 100 + Math.random() * (CONFIG.worldHeight - 200);
+                food.push(new Food(x, y));
+            }
+
             // Spawn new small crocodiles periodically
             spawnTimer++;
             if (spawnTimer >= CONFIG.spawnInterval) {
@@ -1118,15 +1437,64 @@
             // Draw world border
             drawWorldBorder();
 
-            // Draw eggs first (behind crocodiles)
+            // Draw hiding spots (behind everything)
+            for (const spot of hidingSpots) {
+                spot.draw(ctx, camera);
+            }
+
+            // Draw food
+            for (const f of food) {
+                f.draw(ctx, camera);
+            }
+
+            // Draw eggs
             for (const egg of eggs) {
                 egg.draw(ctx, camera);
+            }
+
+            // Draw protection auras for teammates
+            for (const croc of allCrocs) {
+                if (!croc.alive) continue;
+                if (croc.size >= CONFIG.protectionSizeThreshold) {
+                    // Draw protection aura
+                    const screenX = croc.x - camera.x;
+                    const screenY = croc.y - camera.y;
+
+                    if (screenX > -200 && screenX < canvas.width + 200 &&
+                        screenY > -200 && screenY < canvas.height + 200) {
+                        ctx.beginPath();
+                        ctx.arc(screenX, screenY, CONFIG.protectionAuraRadius, 0, Math.PI * 2);
+                        ctx.strokeStyle = `rgba(${croc.teamId === 0 ? '74, 222, 128' : '255, 255, 255'}, 0.2)`;
+                        ctx.lineWidth = 2;
+                        ctx.setLineDash([5, 5]);
+                        ctx.stroke();
+                        ctx.setLineDash([]);
+
+                        // Fill with subtle color
+                        ctx.fillStyle = `rgba(${croc.teamId === 0 ? '74, 222, 128' : '255, 255, 255'}, 0.05)`;
+                        ctx.fill();
+                    }
+                }
             }
 
             // Draw all crocodiles (sorted by size for proper layering)
             const drawOrder = [...allCrocs].filter(c => c.alive).sort((a, b) => a.size - b.size);
             for (const croc of drawOrder) {
                 croc.draw(ctx, camera);
+
+                // Draw shield icon if protected
+                if (!croc.isPlayer) {
+                    const protector = isProtectedByTeammate(croc, allCrocs);
+                    const hiding = isHiding(croc);
+
+                    if (protector || hiding) {
+                        const screenX = croc.x - camera.x;
+                        const screenY = croc.y - camera.y;
+                        ctx.font = 'bold 14px Arial';
+                        ctx.textAlign = 'center';
+                        ctx.fillText(hiding ? '🌿' : '🛡️', screenX, screenY - croc.radius - 20);
+                    }
+                }
             }
 
             // Draw minimap
@@ -1172,6 +1540,30 @@
                 canvas.width * scaleX,
                 canvas.height * scaleY
             );
+
+            // Draw hiding spots on minimap
+            for (const spot of hidingSpots) {
+                const sx = spot.x * scaleX;
+                const sy = spot.y * scaleY;
+                const sr = spot.radius * scaleX;
+
+                minimapCtx.beginPath();
+                minimapCtx.arc(sx, sy, sr, 0, Math.PI * 2);
+                minimapCtx.fillStyle = 'rgba(22, 101, 52, 0.5)';
+                minimapCtx.fill();
+            }
+
+            // Draw food on minimap
+            for (const f of food) {
+                if (!f.alive) continue;
+                const fx = f.x * scaleX;
+                const fy = f.y * scaleY;
+
+                minimapCtx.beginPath();
+                minimapCtx.arc(fx, fy, 2, 0, Math.PI * 2);
+                minimapCtx.fillStyle = f.type === 'fish' ? '#60a5fa' : '#84cc16';
+                minimapCtx.fill();
+            }
 
             // Draw eggs on minimap
             for (const egg of eggs) {
