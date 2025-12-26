@@ -223,6 +223,31 @@
             color: #1a1a2e;
         }
 
+        .footer-buttons {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .game-link {
+            display: inline-block;
+            padding: 12px 25px;
+            color: #1a1a2e;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 1rem;
+            background: linear-gradient(90deg, #00d9ff, #a855f7);
+            border: none;
+            border-radius: 8px;
+            transition: all 0.3s;
+        }
+
+        .game-link:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 217, 255, 0.4);
+        }
+
         /* Card indicators */
         .card-indicators {
             position: fixed;
@@ -549,7 +574,10 @@
                     <div class="card-content">
                         <h2>Explore More</h2>
                         <p>Thanks for flipping through this experiment.<br>Built with CSS 3D transforms & matrix math.</p>
-                        <a href="/" class="back-link">← Back to kaltenbach.dev</a>
+                        <div class="footer-buttons">
+                            <a href="game.html" class="game-link">Play Game</a>
+                            <a href="/" class="back-link">&larr; Back to kaltenbach.dev</a>
+                        </div>
                     </div>
                 </div>
             </div>
