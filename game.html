@@ -207,6 +207,18 @@
         .instructions .green { color: #4ade80; }
         .instructions .red { color: #ef4444; }
 
+        .minimap {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 180px;
+            height: 120px;
+            background: rgba(0, 0, 0, 0.7);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
         @media (max-width: 768px) {
             .instructions {
                 display: none;
@@ -220,6 +232,13 @@
             .joystick-stick {
                 width: 60px;
                 height: 60px;
+            }
+
+            .minimap {
+                width: 120px;
+                height: 80px;
+                bottom: 10px;
+                right: 10px;
             }
         }
     </style>
@@ -242,10 +261,8 @@
         </div>
     </div>
 
-    <div class="instructions">
-        <p><span class="green">Kleiner</span> = Fressen!</p>
-        <p><span class="red">Größer</span> = Wegrennen!</p>
-        <p>Joystick oder Pfeiltasten</p>
+    <div class="minimap">
+        <canvas id="minimapCanvas"></canvas>
     </div>
 
     <div class="game-over" id="gameOver">
@@ -274,11 +291,18 @@
         const winScreen = document.getElementById('winScreen');
         const finalSizeDisplay = document.getElementById('finalSize');
         const winSizeDisplay = document.getElementById('winSize');
+        const minimapCanvas = document.getElementById('minimapCanvas');
+        const minimapCtx = minimapCanvas.getContext('2d');
 
         // Resize canvas to fit window
         function resizeCanvas() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
+
+            // Resize minimap
+            const minimapContainer = document.querySelector('.minimap');
+            minimapCanvas.width = minimapContainer.offsetWidth;
+            minimapCanvas.height = minimapContainer.offsetHeight;
         }
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
@@ -679,10 +703,68 @@
                 croc.draw(ctx, camera);
             }
 
+            // Draw minimap
+            drawMinimap();
+
             // Update UI
             sizeDisplay.textContent = player.size.toFixed(1);
 
             requestAnimationFrame(gameLoop);
+        }
+
+        function drawMinimap() {
+            const mw = minimapCanvas.width;
+            const mh = minimapCanvas.height;
+            const scaleX = mw / CONFIG.worldWidth;
+            const scaleY = mh / CONFIG.worldHeight;
+
+            // Clear minimap
+            minimapCtx.fillStyle = '#0d2818';
+            minimapCtx.fillRect(0, 0, mw, mh);
+
+            // Draw world border
+            minimapCtx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+            minimapCtx.lineWidth = 1;
+            minimapCtx.strokeRect(0, 0, mw, mh);
+
+            // Draw camera viewport
+            minimapCtx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            minimapCtx.strokeRect(
+                camera.x * scaleX,
+                camera.y * scaleY,
+                canvas.width * scaleX,
+                canvas.height * scaleY
+            );
+
+            // Draw AI crocodiles
+            for (const croc of aiCrocs) {
+                if (!croc.alive) continue;
+                const mx = croc.x * scaleX;
+                const my = croc.y * scaleY;
+                const size = Math.max(2, croc.size * 3);
+
+                minimapCtx.beginPath();
+                minimapCtx.arc(mx, my, size, 0, Math.PI * 2);
+                minimapCtx.fillStyle = '#4ade80';
+                minimapCtx.fill();
+            }
+
+            // Draw player (highlighted)
+            if (player.alive) {
+                const px = player.x * scaleX;
+                const py = player.y * scaleY;
+                const size = Math.max(3, player.size * 3);
+
+                minimapCtx.beginPath();
+                minimapCtx.arc(px, py, size + 2, 0, Math.PI * 2);
+                minimapCtx.fillStyle = 'white';
+                minimapCtx.fill();
+
+                minimapCtx.beginPath();
+                minimapCtx.arc(px, py, size, 0, Math.PI * 2);
+                minimapCtx.fillStyle = '#22c55e';
+                minimapCtx.fill();
+            }
         }
 
         function drawWorldBorder() {
