@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Game - Sandbox</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Krokodil-Spiel - Sandbox</title>
     <style>
         * {
             margin: 0;
@@ -14,46 +14,832 @@
         html, body {
             height: 100%;
             overflow: hidden;
+            touch-action: none;
         }
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: linear-gradient(135deg, #0a0a14 0%, #1a1a2e 50%, #16213e 100%);
+            background: linear-gradient(135deg, #0a3d0c 0%, #1a5a1c 50%, #0d4a2a 100%);
             color: white;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
         }
 
-        .crocodile {
-            font-size: clamp(8rem, 25vw, 15rem);
-            user-select: none;
+        #gameCanvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .ui-overlay {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        .score-display {
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 15px 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .score-display h2 {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.7;
+            margin-bottom: 5px;
+        }
+
+        .score-display .size {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #4ade80;
+        }
+
+        .game-over {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 40px;
+            text-align: center;
+            border: 2px solid #ef4444;
+            z-index: 200;
+            display: none;
+        }
+
+        .game-over.visible {
+            display: block;
+        }
+
+        .game-over h1 {
+            font-size: 2.5rem;
+            color: #ef4444;
+            margin-bottom: 15px;
+        }
+
+        .game-over p {
+            font-size: 1.2rem;
+            opacity: 0.8;
+            margin-bottom: 25px;
+        }
+
+        .restart-btn {
+            padding: 15px 40px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            background: linear-gradient(90deg, #22c55e, #16a34a);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            pointer-events: auto;
+        }
+
+        .restart-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 25px rgba(34, 197, 94, 0.4);
+        }
+
+        /* Joystick Controls */
+        .joystick-container {
+            position: fixed;
+            bottom: 30px;
+            left: 30px;
+            z-index: 100;
+        }
+
+        .joystick-base {
+            width: 120px;
+            height: 120px;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 50%;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            position: relative;
+            touch-action: none;
+        }
+
+        .joystick-stick {
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, #4ade80, #22c55e);
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            pointer-events: none;
         }
 
         .back-link {
             position: fixed;
-            bottom: 30px;
-            left: 50%;
-            transform: translateX(-50%);
+            top: 20px;
+            right: 20px;
+            z-index: 100;
             padding: 12px 25px;
-            color: #00d9ff;
+            color: #4ade80;
             text-decoration: none;
             font-weight: 600;
             font-size: 1rem;
-            border: 2px solid #00d9ff;
+            border: 2px solid #4ade80;
             border-radius: 8px;
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(10px);
             transition: all 0.3s;
         }
 
         .back-link:hover {
-            background: #00d9ff;
-            color: #1a1a2e;
+            background: #4ade80;
+            color: #0a3d0c;
+        }
+
+        .win-screen {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 40px;
+            text-align: center;
+            border: 2px solid #4ade80;
+            z-index: 200;
+            display: none;
+        }
+
+        .win-screen.visible {
+            display: block;
+        }
+
+        .win-screen h1 {
+            font-size: 2.5rem;
+            color: #4ade80;
+            margin-bottom: 15px;
+        }
+
+        .instructions {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 15px;
+            font-size: 0.85rem;
+            max-width: 200px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .instructions p {
+            margin-bottom: 8px;
+            opacity: 0.9;
+        }
+
+        .instructions .green { color: #4ade80; }
+        .instructions .red { color: #ef4444; }
+
+        @media (max-width: 768px) {
+            .instructions {
+                display: none;
+            }
+
+            .joystick-base {
+                width: 140px;
+                height: 140px;
+            }
+
+            .joystick-stick {
+                width: 60px;
+                height: 60px;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="crocodile">&#x1F40A;</div>
-    <a href="index.html" class="back-link">&larr; Back</a>
+    <canvas id="gameCanvas"></canvas>
+
+    <div class="ui-overlay">
+        <div class="score-display">
+            <h2>Deine Größe</h2>
+            <div class="size" id="sizeDisplay">1.0</div>
+        </div>
+    </div>
+
+    <a href="index.html" class="back-link">&larr; Zurück</a>
+
+    <div class="joystick-container">
+        <div class="joystick-base" id="joystickBase">
+            <div class="joystick-stick" id="joystickStick"></div>
+        </div>
+    </div>
+
+    <div class="instructions">
+        <p><span class="green">Grün/Kleiner</span> = Fressen!</p>
+        <p><span class="red">Rot/Größer</span> = Wegrennen!</p>
+        <p>Joystick oder Pfeiltasten</p>
+    </div>
+
+    <div class="game-over" id="gameOver">
+        <h1>Gefressen!</h1>
+        <p>Ein größeres Krokodil hat dich erwischt.</p>
+        <p>Erreichte Größe: <strong id="finalSize">1.0</strong></p>
+        <button class="restart-btn" onclick="restartGame()">Nochmal spielen</button>
+    </div>
+
+    <div class="win-screen" id="winScreen">
+        <h1>Gewonnen!</h1>
+        <p>Du bist das größte Krokodil!</p>
+        <p>Endgröße: <strong id="winSize">1.0</strong></p>
+        <button class="restart-btn" onclick="restartGame()">Nochmal spielen</button>
+    </div>
+
+    <script>
+        // ============================================
+        // Krokodil-Spiel - Fressen und Wachsen
+        // ============================================
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const sizeDisplay = document.getElementById('sizeDisplay');
+        const gameOverScreen = document.getElementById('gameOver');
+        const winScreen = document.getElementById('winScreen');
+        const finalSizeDisplay = document.getElementById('finalSize');
+        const winSizeDisplay = document.getElementById('winSize');
+
+        // Resize canvas to fit window
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Game Configuration
+        const CONFIG = {
+            baseSpeed: 3,
+            aiSpeedFactor: 0.7,
+            growthFactor: 0.15,
+            numAICrocs: 8,
+            minSize: 0.5,
+            maxSize: 4.0,
+            worldPadding: 100
+        };
+
+        // Game State
+        let gameRunning = true;
+        let player = null;
+        let aiCrocs = [];
+        let joystickInput = { x: 0, y: 0 };
+        let keyboardInput = { x: 0, y: 0 };
+
+        // ============================================
+        // Crocodile Class
+        // ============================================
+
+        class Crocodile {
+            constructor(x, y, size, isPlayer = false) {
+                this.x = x;
+                this.y = y;
+                this.size = size;
+                this.isPlayer = isPlayer;
+                this.vx = 0;
+                this.vy = 0;
+                this.angle = 0;
+                this.targetAngle = 0;
+                this.alive = true;
+
+                // AI specific
+                this.target = null;
+                this.fleeTarget = null;
+                this.thinkTimer = 0;
+            }
+
+            get radius() {
+                return 20 + this.size * 15;
+            }
+
+            get speed() {
+                const baseSpeed = this.isPlayer ? CONFIG.baseSpeed : CONFIG.baseSpeed * CONFIG.aiSpeedFactor;
+                // Bigger = slightly slower
+                return baseSpeed * (1.2 - this.size * 0.1);
+            }
+
+            update(inputX, inputY) {
+                if (!this.alive) return;
+
+                // Movement
+                if (this.isPlayer) {
+                    this.vx = inputX * this.speed;
+                    this.vy = inputY * this.speed;
+                }
+
+                // Update position
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Boundary check
+                const padding = this.radius;
+                this.x = Math.max(padding, Math.min(canvas.width - padding, this.x));
+                this.y = Math.max(padding, Math.min(canvas.height - padding, this.y));
+
+                // Update angle based on velocity
+                if (Math.abs(this.vx) > 0.1 || Math.abs(this.vy) > 0.1) {
+                    this.targetAngle = Math.atan2(this.vy, this.vx);
+                }
+
+                // Smooth angle rotation
+                let angleDiff = this.targetAngle - this.angle;
+                while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                this.angle += angleDiff * 0.15;
+            }
+
+            updateAI(allCrocs) {
+                if (!this.alive) return;
+
+                this.thinkTimer--;
+                if (this.thinkTimer <= 0) {
+                    this.thinkTimer = 30 + Math.random() * 30;
+                    this.chooseTarget(allCrocs);
+                }
+
+                // Move towards target or flee
+                let targetX = 0, targetY = 0;
+
+                if (this.fleeTarget && this.fleeTarget.alive) {
+                    // Flee from bigger croc
+                    const dx = this.x - this.fleeTarget.x;
+                    const dy = this.y - this.fleeTarget.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist > 0) {
+                        targetX = dx / dist;
+                        targetY = dy / dist;
+                    }
+                } else if (this.target && this.target.alive) {
+                    // Chase smaller croc
+                    const dx = this.target.x - this.x;
+                    const dy = this.target.y - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist > 0) {
+                        targetX = dx / dist;
+                        targetY = dy / dist;
+                    }
+                } else {
+                    // Wander randomly
+                    targetX = Math.cos(this.angle);
+                    targetY = Math.sin(this.angle);
+                }
+
+                this.vx = targetX * this.speed;
+                this.vy = targetY * this.speed;
+
+                this.update(0, 0);
+            }
+
+            chooseTarget(allCrocs) {
+                this.target = null;
+                this.fleeTarget = null;
+
+                let closestPrey = null;
+                let closestPreyDist = Infinity;
+                let closestThreat = null;
+                let closestThreatDist = Infinity;
+
+                for (const croc of allCrocs) {
+                    if (croc === this || !croc.alive) continue;
+
+                    const dx = croc.x - this.x;
+                    const dy = croc.y - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (croc.size < this.size - 0.1) {
+                        // Potential prey
+                        if (dist < closestPreyDist) {
+                            closestPreyDist = dist;
+                            closestPrey = croc;
+                        }
+                    } else if (croc.size > this.size + 0.1) {
+                        // Potential threat
+                        if (dist < closestThreatDist && dist < 300) {
+                            closestThreatDist = dist;
+                            closestThreat = croc;
+                        }
+                    }
+                }
+
+                // Prioritize fleeing if threat is close
+                if (closestThreat && closestThreatDist < 200) {
+                    this.fleeTarget = closestThreat;
+                } else {
+                    this.target = closestPrey;
+                }
+            }
+
+            draw(ctx) {
+                if (!this.alive) return;
+
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+
+                const baseSize = this.radius;
+
+                // Determine color based on player comparison
+                let bodyColor, darkColor;
+                if (this.isPlayer) {
+                    bodyColor = '#22c55e';
+                    darkColor = '#15803d';
+                } else {
+                    // Color relative to player size
+                    if (this.size < player.size - 0.1) {
+                        // Smaller than player - green (edible)
+                        bodyColor = '#4ade80';
+                        darkColor = '#22c55e';
+                    } else if (this.size > player.size + 0.1) {
+                        // Bigger than player - red (dangerous)
+                        bodyColor = '#ef4444';
+                        darkColor = '#b91c1c';
+                    } else {
+                        // Similar size - yellow (neutral)
+                        bodyColor = '#facc15';
+                        darkColor = '#ca8a04';
+                    }
+                }
+
+                // Body (ellipse)
+                ctx.beginPath();
+                ctx.ellipse(0, 0, baseSize * 1.3, baseSize * 0.7, 0, 0, Math.PI * 2);
+                ctx.fillStyle = bodyColor;
+                ctx.fill();
+                ctx.strokeStyle = darkColor;
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                // Tail
+                ctx.beginPath();
+                ctx.moveTo(-baseSize * 1.2, 0);
+                ctx.quadraticCurveTo(-baseSize * 1.8, -baseSize * 0.3, -baseSize * 2.2, 0);
+                ctx.quadraticCurveTo(-baseSize * 1.8, baseSize * 0.3, -baseSize * 1.2, 0);
+                ctx.fillStyle = bodyColor;
+                ctx.fill();
+                ctx.stroke();
+
+                // Snout
+                ctx.beginPath();
+                ctx.ellipse(baseSize * 1.1, 0, baseSize * 0.6, baseSize * 0.35, 0, 0, Math.PI * 2);
+                ctx.fillStyle = bodyColor;
+                ctx.fill();
+                ctx.stroke();
+
+                // Eyes
+                const eyeY = baseSize * 0.25;
+                const eyeX = baseSize * 0.3;
+
+                // Eye whites
+                ctx.beginPath();
+                ctx.arc(eyeX, -eyeY, baseSize * 0.2, 0, Math.PI * 2);
+                ctx.arc(eyeX, eyeY, baseSize * 0.2, 0, Math.PI * 2);
+                ctx.fillStyle = 'white';
+                ctx.fill();
+
+                // Pupils
+                ctx.beginPath();
+                ctx.arc(eyeX + baseSize * 0.05, -eyeY, baseSize * 0.1, 0, Math.PI * 2);
+                ctx.arc(eyeX + baseSize * 0.05, eyeY, baseSize * 0.1, 0, Math.PI * 2);
+                ctx.fillStyle = 'black';
+                ctx.fill();
+
+                // Teeth (on snout)
+                ctx.fillStyle = 'white';
+                for (let i = 0; i < 4; i++) {
+                    const tx = baseSize * 1.0 + i * baseSize * 0.15;
+                    ctx.beginPath();
+                    ctx.moveTo(tx, -baseSize * 0.35);
+                    ctx.lineTo(tx + baseSize * 0.05, -baseSize * 0.5);
+                    ctx.lineTo(tx + baseSize * 0.1, -baseSize * 0.35);
+                    ctx.fill();
+
+                    ctx.beginPath();
+                    ctx.moveTo(tx, baseSize * 0.35);
+                    ctx.lineTo(tx + baseSize * 0.05, baseSize * 0.5);
+                    ctx.lineTo(tx + baseSize * 0.1, baseSize * 0.35);
+                    ctx.fill();
+                }
+
+                // Scales pattern
+                ctx.strokeStyle = darkColor;
+                ctx.lineWidth = 1;
+                for (let i = -2; i <= 2; i++) {
+                    ctx.beginPath();
+                    ctx.arc(i * baseSize * 0.3, 0, baseSize * 0.15, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+
+                ctx.restore();
+            }
+
+            grow(amount) {
+                this.size = Math.min(CONFIG.maxSize, this.size + amount);
+            }
+        }
+
+        // ============================================
+        // Collision Detection
+        // ============================================
+
+        function checkCollisions() {
+            const allCrocs = [player, ...aiCrocs].filter(c => c.alive);
+
+            for (let i = 0; i < allCrocs.length; i++) {
+                for (let j = i + 1; j < allCrocs.length; j++) {
+                    const a = allCrocs[i];
+                    const b = allCrocs[j];
+
+                    const dx = a.x - b.x;
+                    const dy = a.y - b.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const minDist = (a.radius + b.radius) * 0.7;
+
+                    if (dist < minDist) {
+                        // Collision! Bigger eats smaller
+                        const sizeDiff = a.size - b.size;
+
+                        if (Math.abs(sizeDiff) > 0.1) {
+                            if (sizeDiff > 0) {
+                                // A eats B
+                                a.grow(b.size * CONFIG.growthFactor);
+                                b.alive = false;
+
+                                if (b.isPlayer) {
+                                    endGame(false);
+                                }
+                            } else {
+                                // B eats A
+                                b.grow(a.size * CONFIG.growthFactor);
+                                a.alive = false;
+
+                                if (a.isPlayer) {
+                                    endGame(false);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ============================================
+        // Game Loop
+        // ============================================
+
+        function initGame() {
+            // Create player in center
+            player = new Crocodile(
+                canvas.width / 2,
+                canvas.height / 2,
+                1.0,
+                true
+            );
+
+            // Create AI crocodiles
+            aiCrocs = [];
+            for (let i = 0; i < CONFIG.numAICrocs; i++) {
+                const x = CONFIG.worldPadding + Math.random() * (canvas.width - CONFIG.worldPadding * 2);
+                const y = CONFIG.worldPadding + Math.random() * (canvas.height - CONFIG.worldPadding * 2);
+
+                // Vary sizes - some smaller, some bigger
+                let size;
+                if (i < 3) {
+                    size = 0.5 + Math.random() * 0.4; // Small
+                } else if (i < 6) {
+                    size = 0.9 + Math.random() * 0.4; // Medium
+                } else {
+                    size = 1.3 + Math.random() * 0.5; // Large
+                }
+
+                aiCrocs.push(new Crocodile(x, y, size, false));
+            }
+
+            gameRunning = true;
+            gameOverScreen.classList.remove('visible');
+            winScreen.classList.remove('visible');
+        }
+
+        function gameLoop() {
+            if (!gameRunning) {
+                requestAnimationFrame(gameLoop);
+                return;
+            }
+
+            // Clear canvas
+            ctx.fillStyle = '#1a5a1c';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw water/swamp pattern
+            drawBackground();
+
+            // Combine joystick and keyboard input
+            const inputX = joystickInput.x || keyboardInput.x;
+            const inputY = joystickInput.y || keyboardInput.y;
+
+            // Update player
+            player.update(inputX, inputY);
+
+            // Update AI
+            const allCrocs = [player, ...aiCrocs];
+            for (const croc of aiCrocs) {
+                croc.updateAI(allCrocs);
+            }
+
+            // Check collisions
+            checkCollisions();
+
+            // Check win condition
+            const aliveCrocs = aiCrocs.filter(c => c.alive);
+            if (aliveCrocs.length === 0) {
+                endGame(true);
+            }
+
+            // Draw all crocodiles (sorted by size for proper layering)
+            const drawOrder = [...allCrocs].filter(c => c.alive).sort((a, b) => a.size - b.size);
+            for (const croc of drawOrder) {
+                croc.draw(ctx);
+            }
+
+            // Update UI
+            sizeDisplay.textContent = player.size.toFixed(1);
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function drawBackground() {
+            // Subtle swamp pattern
+            ctx.fillStyle = 'rgba(0, 50, 0, 0.3)';
+            for (let i = 0; i < 20; i++) {
+                const x = (i * 173 + Date.now() * 0.01) % (canvas.width + 200) - 100;
+                const y = (i * 137) % canvas.height;
+                ctx.beginPath();
+                ctx.ellipse(x, y, 80 + i * 5, 40 + i * 3, i * 0.5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Water ripples
+            ctx.strokeStyle = 'rgba(100, 200, 150, 0.1)';
+            ctx.lineWidth = 2;
+            for (let i = 0; i < 10; i++) {
+                const x = (i * 251) % canvas.width;
+                const y = (i * 197) % canvas.height;
+                const size = 30 + Math.sin(Date.now() * 0.002 + i) * 10;
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+        }
+
+        function endGame(won) {
+            gameRunning = false;
+
+            if (won) {
+                winSizeDisplay.textContent = player.size.toFixed(1);
+                winScreen.classList.add('visible');
+            } else {
+                finalSizeDisplay.textContent = player.size.toFixed(1);
+                gameOverScreen.classList.add('visible');
+            }
+        }
+
+        function restartGame() {
+            initGame();
+        }
+
+        // ============================================
+        // Joystick Controls
+        // ============================================
+
+        const joystickBase = document.getElementById('joystickBase');
+        const joystickStick = document.getElementById('joystickStick');
+        let joystickActive = false;
+        let joystickCenter = { x: 0, y: 0 };
+
+        function getJoystickCenter() {
+            const rect = joystickBase.getBoundingClientRect();
+            return {
+                x: rect.left + rect.width / 2,
+                y: rect.top + rect.height / 2
+            };
+        }
+
+        function updateJoystick(clientX, clientY) {
+            const center = getJoystickCenter();
+            const maxDist = joystickBase.offsetWidth / 2 - joystickStick.offsetWidth / 2;
+
+            let dx = clientX - center.x;
+            let dy = clientY - center.y;
+
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            if (dist > maxDist) {
+                dx = (dx / dist) * maxDist;
+                dy = (dy / dist) * maxDist;
+            }
+
+            joystickStick.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+
+            // Normalize input (-1 to 1)
+            joystickInput.x = dx / maxDist;
+            joystickInput.y = dy / maxDist;
+        }
+
+        function resetJoystick() {
+            joystickStick.style.transform = 'translate(-50%, -50%)';
+            joystickInput.x = 0;
+            joystickInput.y = 0;
+        }
+
+        // Touch events
+        joystickBase.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            joystickActive = true;
+            const touch = e.touches[0];
+            updateJoystick(touch.clientX, touch.clientY);
+        });
+
+        document.addEventListener('touchmove', (e) => {
+            if (!joystickActive) return;
+            e.preventDefault();
+            const touch = e.touches[0];
+            updateJoystick(touch.clientX, touch.clientY);
+        }, { passive: false });
+
+        document.addEventListener('touchend', () => {
+            joystickActive = false;
+            resetJoystick();
+        });
+
+        // Mouse events (for desktop testing)
+        joystickBase.addEventListener('mousedown', (e) => {
+            joystickActive = true;
+            updateJoystick(e.clientX, e.clientY);
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!joystickActive) return;
+            updateJoystick(e.clientX, e.clientY);
+        });
+
+        document.addEventListener('mouseup', () => {
+            joystickActive = false;
+            resetJoystick();
+        });
+
+        // ============================================
+        // Keyboard Controls
+        // ============================================
+
+        const keys = {};
+
+        document.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+            updateKeyboardInput();
+        });
+
+        document.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+            updateKeyboardInput();
+        });
+
+        function updateKeyboardInput() {
+            keyboardInput.x = 0;
+            keyboardInput.y = 0;
+
+            if (keys['ArrowLeft'] || keys['a'] || keys['A']) keyboardInput.x -= 1;
+            if (keys['ArrowRight'] || keys['d'] || keys['D']) keyboardInput.x += 1;
+            if (keys['ArrowUp'] || keys['w'] || keys['W']) keyboardInput.y -= 1;
+            if (keys['ArrowDown'] || keys['s'] || keys['S']) keyboardInput.y += 1;
+
+            // Normalize diagonal movement
+            const length = Math.sqrt(keyboardInput.x ** 2 + keyboardInput.y ** 2);
+            if (length > 1) {
+                keyboardInput.x /= length;
+                keyboardInput.y /= length;
+            }
+        }
+
+        // ============================================
+        // Start Game
+        // ============================================
+
+        initGame();
+        gameLoop();
+    </script>
 </body>
 </html>
