@@ -223,29 +223,30 @@
             color: #1a1a2e;
         }
 
-        .footer-buttons {
-            display: flex;
-            gap: 15px;
-            flex-wrap: wrap;
-            justify-content: center;
-        }
-
-        .game-link {
-            display: inline-block;
-            padding: 12px 25px;
+        .floating-game-button {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            z-index: 100;
+            padding: 14px 28px;
             color: #1a1a2e;
             text-decoration: none;
             font-weight: 600;
             font-size: 1rem;
             background: linear-gradient(90deg, #00d9ff, #a855f7);
             border: none;
-            border-radius: 8px;
+            border-radius: 12px;
             transition: all 0.3s;
+            box-shadow: 0 4px 20px rgba(0, 217, 255, 0.3);
         }
 
-        .game-link:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(0, 217, 255, 0.4);
+        .floating-game-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 30px rgba(0, 217, 255, 0.5);
+        }
+
+        .floating-game-button:active {
+            transform: translateY(-1px);
         }
 
         /* Card indicators */
@@ -514,6 +515,9 @@
         <span>↕ Scroll or swipe to flip cards</span>
     </div>
 
+    <!-- Floating Game Button -->
+    <a href="game.html" class="floating-game-button">Play Game</a>
+
     <!-- 3D Scene -->
     <div class="scene" id="scene">
         <div class="card-stack" id="cardStack">
@@ -574,10 +578,7 @@
                     <div class="card-content">
                         <h2>Explore More</h2>
                         <p>Thanks for flipping through this experiment.<br>Built with CSS 3D transforms & matrix math.</p>
-                        <div class="footer-buttons">
-                            <a href="game.html" class="game-link">Play Game</a>
-                            <a href="/" class="back-link">&larr; Back to kaltenbach.dev</a>
-                        </div>
+                        <a href="/" class="back-link">&larr; Back to kaltenbach.dev</a>
                     </div>
                 </div>
             </div>
