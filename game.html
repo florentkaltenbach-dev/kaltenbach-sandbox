@@ -610,23 +610,13 @@
                 true
             );
 
-            // Create AI crocodiles
+            // Create AI crocodiles - all start at same size
             aiCrocs = [];
             for (let i = 0; i < CONFIG.numAICrocs; i++) {
                 const x = CONFIG.worldPadding + Math.random() * (canvas.width - CONFIG.worldPadding * 2);
                 const y = CONFIG.worldPadding + Math.random() * (canvas.height - CONFIG.worldPadding * 2);
 
-                // Vary sizes - some smaller, some bigger
-                let size;
-                if (i < 3) {
-                    size = 0.5 + Math.random() * 0.4; // Small
-                } else if (i < 6) {
-                    size = 0.9 + Math.random() * 0.4; // Medium
-                } else {
-                    size = 1.3 + Math.random() * 0.5; // Large
-                }
-
-                aiCrocs.push(new Crocodile(x, y, size, false));
+                aiCrocs.push(new Crocodile(x, y, 1.0, false));
             }
 
             gameRunning = true;
