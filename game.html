@@ -243,8 +243,8 @@
     </div>
 
     <div class="instructions">
-        <p><span class="green">Grün/Kleiner</span> = Fressen!</p>
-        <p><span class="red">Rot/Größer</span> = Wegrennen!</p>
+        <p><span class="green">Kleiner</span> = Fressen!</p>
+        <p><span class="red">Größer</span> = Wegrennen!</p>
         <p>Joystick oder Pfeiltasten</p>
     </div>
 
@@ -288,10 +288,12 @@
             baseSpeed: 3,
             aiSpeedFactor: 0.7,
             growthFactor: 0.15,
-            numAICrocs: 8,
+            numAICrocs: 15,
             minSize: 0.5,
             maxSize: 4.0,
-            worldPadding: 100
+            worldPadding: 100,
+            worldWidth: 3000,
+            worldHeight: 2000
         };
 
         // Game State
@@ -300,6 +302,7 @@
         let aiCrocs = [];
         let joystickInput = { x: 0, y: 0 };
         let keyboardInput = { x: 0, y: 0 };
+        let camera = { x: 0, y: 0 };
 
         // ============================================
         // Crocodile Class
@@ -346,10 +349,10 @@
                 this.x += this.vx;
                 this.y += this.vy;
 
-                // Boundary check
+                // Boundary check (world bounds)
                 const padding = this.radius;
-                this.x = Math.max(padding, Math.min(canvas.width - padding, this.x));
-                this.y = Math.max(padding, Math.min(canvas.height - padding, this.y));
+                this.x = Math.max(padding, Math.min(CONFIG.worldWidth - padding, this.x));
+                this.y = Math.max(padding, Math.min(CONFIG.worldHeight - padding, this.y));
 
                 // Update angle based on velocity
                 if (Math.abs(this.vx) > 0.1 || Math.abs(this.vy) > 0.1) {
@@ -444,35 +447,33 @@
                 }
             }
 
-            draw(ctx) {
+            draw(ctx, camera) {
                 if (!this.alive) return;
 
+                // Calculate screen position
+                const screenX = this.x - camera.x;
+                const screenY = this.y - camera.y;
+
+                // Don't draw if off screen
+                if (screenX < -150 || screenX > canvas.width + 150 ||
+                    screenY < -150 || screenY > canvas.height + 150) {
+                    return;
+                }
+
                 ctx.save();
-                ctx.translate(this.x, this.y);
+                ctx.translate(screenX, screenY);
                 ctx.rotate(this.angle);
 
                 const baseSize = this.radius;
 
-                // Determine color based on player comparison
+                // Determine color - player is darker green, AI crocs are lighter green
                 let bodyColor, darkColor;
                 if (this.isPlayer) {
                     bodyColor = '#22c55e';
                     darkColor = '#15803d';
                 } else {
-                    // Color relative to player size
-                    if (this.size < player.size - 0.1) {
-                        // Smaller than player - green (edible)
-                        bodyColor = '#4ade80';
-                        darkColor = '#22c55e';
-                    } else if (this.size > player.size + 0.1) {
-                        // Bigger than player - red (dangerous)
-                        bodyColor = '#ef4444';
-                        darkColor = '#b91c1c';
-                    } else {
-                        // Similar size - yellow (neutral)
-                        bodyColor = '#facc15';
-                        darkColor = '#ca8a04';
-                    }
+                    bodyColor = '#4ade80';
+                    darkColor = '#22c55e';
                 }
 
                 // Body (ellipse)
@@ -602,22 +603,26 @@
         // ============================================
 
         function initGame() {
-            // Create player in center
+            // Create player in center of world
             player = new Crocodile(
-                canvas.width / 2,
-                canvas.height / 2,
+                CONFIG.worldWidth / 2,
+                CONFIG.worldHeight / 2,
                 1.0,
                 true
             );
 
-            // Create AI crocodiles - all start at same size
+            // Create AI crocodiles - all start at same size, spread across world
             aiCrocs = [];
             for (let i = 0; i < CONFIG.numAICrocs; i++) {
-                const x = CONFIG.worldPadding + Math.random() * (canvas.width - CONFIG.worldPadding * 2);
-                const y = CONFIG.worldPadding + Math.random() * (canvas.height - CONFIG.worldPadding * 2);
+                const x = CONFIG.worldPadding + Math.random() * (CONFIG.worldWidth - CONFIG.worldPadding * 2);
+                const y = CONFIG.worldPadding + Math.random() * (CONFIG.worldHeight - CONFIG.worldPadding * 2);
 
                 aiCrocs.push(new Crocodile(x, y, 1.0, false));
             }
+
+            // Initialize camera
+            camera.x = player.x - canvas.width / 2;
+            camera.y = player.y - canvas.height / 2;
 
             gameRunning = true;
             gameOverScreen.classList.remove('visible');
@@ -630,19 +635,22 @@
                 return;
             }
 
-            // Clear canvas
-            ctx.fillStyle = '#1a5a1c';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // Draw water/swamp pattern
-            drawBackground();
-
             // Combine joystick and keyboard input
             const inputX = joystickInput.x || keyboardInput.x;
             const inputY = joystickInput.y || keyboardInput.y;
 
             // Update player
             player.update(inputX, inputY);
+
+            // Update camera to follow player (smooth)
+            const targetCamX = player.x - canvas.width / 2;
+            const targetCamY = player.y - canvas.height / 2;
+            camera.x += (targetCamX - camera.x) * 0.1;
+            camera.y += (targetCamY - camera.y) * 0.1;
+
+            // Clamp camera to world bounds
+            camera.x = Math.max(0, Math.min(CONFIG.worldWidth - canvas.width, camera.x));
+            camera.y = Math.max(0, Math.min(CONFIG.worldHeight - canvas.height, camera.y));
 
             // Update AI
             const allCrocs = [player, ...aiCrocs];
@@ -659,16 +667,32 @@
                 endGame(true);
             }
 
+            // Clear canvas
+            ctx.fillStyle = '#1a5a1c';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw water/swamp pattern
+            drawBackground();
+
+            // Draw world border
+            drawWorldBorder();
+
             // Draw all crocodiles (sorted by size for proper layering)
             const drawOrder = [...allCrocs].filter(c => c.alive).sort((a, b) => a.size - b.size);
             for (const croc of drawOrder) {
-                croc.draw(ctx);
+                croc.draw(ctx, camera);
             }
 
             // Update UI
             sizeDisplay.textContent = player.size.toFixed(1);
 
             requestAnimationFrame(gameLoop);
+        }
+
+        function drawWorldBorder() {
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.lineWidth = 5;
+            ctx.strokeRect(-camera.x, -camera.y, CONFIG.worldWidth, CONFIG.worldHeight);
         }
 
         function drawBackground() {
