@@ -466,15 +466,9 @@
 
                 const baseSize = this.radius;
 
-                // Determine color - player is darker green, AI crocs are lighter green
-                let bodyColor, darkColor;
-                if (this.isPlayer) {
-                    bodyColor = '#22c55e';
-                    darkColor = '#15803d';
-                } else {
-                    bodyColor = '#4ade80';
-                    darkColor = '#22c55e';
-                }
+                // Determine color - all crocodiles are light green
+                let bodyColor = '#4ade80';
+                let darkColor = '#22c55e';
 
                 // Body (ellipse)
                 ctx.beginPath();
@@ -574,7 +568,7 @@
                         // Collision! Bigger eats smaller
                         const sizeDiff = a.size - b.size;
 
-                        if (Math.abs(sizeDiff) > 0.1) {
+                        if (Math.abs(sizeDiff) > 0.01) {
                             if (sizeDiff > 0) {
                                 // A eats B
                                 a.grow(b.size * CONFIG.growthFactor);
@@ -611,13 +605,15 @@
                 true
             );
 
-            // Create AI crocodiles - all start at same size, spread across world
+            // Create AI crocodiles - slight size variation for gameplay
             aiCrocs = [];
             for (let i = 0; i < CONFIG.numAICrocs; i++) {
                 const x = CONFIG.worldPadding + Math.random() * (CONFIG.worldWidth - CONFIG.worldPadding * 2);
                 const y = CONFIG.worldPadding + Math.random() * (CONFIG.worldHeight - CONFIG.worldPadding * 2);
+                // Small random variation: 0.9 to 1.1
+                const size = 0.9 + Math.random() * 0.2;
 
-                aiCrocs.push(new Crocodile(x, y, 1.0, false));
+                aiCrocs.push(new Crocodile(x, y, size, false));
             }
 
             // Initialize camera
