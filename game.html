@@ -240,34 +240,55 @@
             pointer-events: auto;
         }
 
-        .egg-btn {
-            padding: 10px 20px;
-            font-size: 1rem;
-            font-weight: 600;
-            background: linear-gradient(90deg, #fbbf24, #d97706);
-            color: white;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s;
+        .egg-control h2 {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.7;
+            margin-bottom: 8px;
+        }
+
+        .offspring-level {
+            margin-bottom: 8px;
+        }
+
+        .offspring-level label {
+            font-size: 0.85rem;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .offspring-level input[type="range"] {
             width: 100%;
+            height: 6px;
+            -webkit-appearance: none;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+            outline: none;
         }
 
-        .egg-btn:hover:not(:disabled) {
-            transform: scale(1.02);
-            box-shadow: 0 3px 15px rgba(251, 191, 36, 0.4);
-        }
-
-        .egg-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
+        .offspring-level input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #4ade80;
+            border-radius: 50%;
+            cursor: pointer;
         }
 
         .egg-cost {
-            font-size: 0.75rem;
-            opacity: 0.7;
+            font-size: 0.85rem;
+            color: #fbbf24;
             text-align: center;
             margin-top: 6px;
+        }
+
+        .mating-hint {
+            font-size: 0.75rem;
+            opacity: 0.6;
+            text-align: center;
+            margin-top: 8px;
+            font-style: italic;
         }
 
         .minimap {
@@ -319,10 +340,13 @@
             <div class="team-count" id="teamCount">0 Verbündete</div>
         </div>
         <div class="egg-control" id="eggControl">
-            <button class="egg-btn" id="eggBtn" onclick="layEgg()">
-                🥚 Ei legen
-            </button>
-            <div class="egg-cost">Kostet 0.5 Größe</div>
+            <h2>Nachwuchs</h2>
+            <div class="offspring-level">
+                <label>Start-Level: <span id="offspringLevelDisplay">0.6</span></label>
+                <input type="range" id="offspringLevel" min="0.4" max="1.5" step="0.1" value="0.6">
+            </div>
+            <div class="egg-cost" id="eggCostDisplay">Kostet 0.5 Größe</div>
+            <div class="mating-hint">♀ Fahre in ein ♂ um ein Ei zu legen</div>
         </div>
     </div>
 
@@ -393,9 +417,11 @@
             worldHeight: 2000,
             spawnInterval: 120,  // frames between spawns
             numEnemyTeams: 3,    // number of enemy teams
-            eggCost: 0.5,        // size cost to lay an egg
+            eggBaseCost: 0.3,    // base size cost to lay an egg
             eggHatchTime: 180,   // frames until egg hatches (3 seconds at 60fps)
-            hatchSize: 0.6,      // size of newly hatched crocodile
+            minOffspringSize: 0.4,
+            maxOffspringSize: 1.5,
+            matingCooldown: 120, // frames before can mate again
             // Boids parameters
             swarmSeparationDist: 80,
             swarmAlignmentDist: 150,
@@ -436,19 +462,21 @@
         let camera = { x: 0, y: 0 };
         let spawnTimer = 0;
         let foodSpawnTimer = 0;
-        let canLayEgg = true;  // Cooldown for egg laying
+        let offspringSize = 0.6;  // Selected offspring size
+        let matingCooldown = 0;   // Cooldown timer for mating
 
         // ============================================
         // Crocodile Class
         // ============================================
 
         class Crocodile {
-            constructor(x, y, size, isPlayer = false, teamId = 0) {
+            constructor(x, y, size, isPlayer = false, teamId = 0, gender = null) {
                 this.x = x;
                 this.y = y;
                 this.size = size;
                 this.isPlayer = isPlayer;
                 this.teamId = teamId;  // 0 = player team, 1+ = enemy teams
+                this.gender = gender || (Math.random() < 0.5 ? 'male' : 'female');  // Random if not specified
                 this.vx = 0;
                 this.vy = 0;
                 this.angle = 0;
@@ -467,6 +495,10 @@
 
             get teamColor() {
                 return TEAM_COLORS[this.teamId] || TEAM_COLORS[0];
+            }
+
+            get genderSymbol() {
+                return this.gender === 'male' ? '♂' : '♀';
             }
 
             get radius() {
@@ -768,8 +800,8 @@
                 ctx.save();
                 ctx.translate(screenX, screenY);
 
-                // Size text
-                const sizeText = this.size.toFixed(1);
+                // Size and gender text
+                const sizeText = this.genderSymbol + ' ' + this.size.toFixed(1);
                 const fontSize = Math.max(12, 10 + this.size * 4);
                 ctx.font = `bold ${fontSize}px Arial`;
                 ctx.textAlign = 'center';
@@ -780,8 +812,8 @@
                 ctx.fillText(sizeText, 0, -baseSize - 8);
                 ctx.fillText(sizeText, 2, -baseSize - 6);
 
-                // White text
-                ctx.fillStyle = 'white';
+                // Gender-colored text (pink for female, blue for male)
+                ctx.fillStyle = this.gender === 'female' ? '#f472b6' : '#60a5fa';
                 ctx.fillText(sizeText, 1, -baseSize - 7);
 
                 ctx.restore();
@@ -1203,13 +1235,14 @@
         // ============================================
 
         function initGame() {
-            // Create player in center of world (team 0 = player team)
+            // Create player in center of world (team 0 = player team, female)
             player = new Crocodile(
                 CONFIG.worldWidth / 2,
                 CONFIG.worldHeight / 2,
                 1.0,
                 true,
-                0  // Player team
+                0,      // Player team
+                'female' // Player is always female
             );
 
             // Create AI crocodiles - distributed among enemy teams and player team
@@ -1218,6 +1251,8 @@
             food = [];
             hidingSpots = [];
             foodSpawnTimer = 0;
+            matingCooldown = 0;
+            offspringSize = 0.6;
 
             // Create hiding spots scattered around the world
             for (let i = 0; i < CONFIG.numHidingSpots; i++) {
@@ -1233,14 +1268,15 @@
                 food.push(new Food(x, y));
             }
 
-            // Create some initial player team allies
+            // Create some initial player team allies (mix of males and females, at least 2 males)
+            const allyGenders = ['male', 'male', 'female'];  // Ensure some males for mating
             for (let i = 0; i < 3; i++) {
                 const angle = (i / 3) * Math.PI * 2;
                 const dist = 150 + Math.random() * 100;
                 const x = player.x + Math.cos(angle) * dist;
                 const y = player.y + Math.sin(angle) * dist;
                 const size = 0.7 + Math.random() * 0.3;
-                aiCrocs.push(new Crocodile(x, y, size, false, 0));  // Player team allies
+                aiCrocs.push(new Crocodile(x, y, size, false, 0, allyGenders[i]));
             }
 
             // Create enemy team crocodiles
@@ -1303,24 +1339,52 @@
             aiCrocs.push(new Crocodile(x, y, size, false, teamId));
         }
 
-        // Lay an egg (costs size/points)
-        function layEgg() {
+        // Calculate egg cost based on offspring size
+        function getEggCost() {
+            return CONFIG.eggBaseCost + (offspringSize - CONFIG.minOffspringSize) * 0.5;
+        }
+
+        // Check if player can afford to mate
+        function canAffordMating() {
+            const cost = getEggCost();
+            return player.size >= cost + 0.5;  // Keep minimum size
+        }
+
+        // Check for mating when player collides with male teammate
+        function checkMating(allCrocs) {
             if (!gameRunning || !player.alive) return;
-            if (!canLayEgg) return;
-            if (player.size < CONFIG.eggCost + 0.5) return;  // Need minimum size to lay egg
+            if (matingCooldown > 0) return;
+            if (!canAffordMating()) return;
 
-            // Spend size to create egg
-            player.size -= CONFIG.eggCost;
+            // Find nearby male teammates
+            for (const croc of allCrocs) {
+                if (croc === player || !croc.alive) continue;
+                if (croc.teamId !== player.teamId) continue;
+                if (croc.gender !== 'male') continue;
 
-            // Create egg behind the player
-            const eggX = player.x - Math.cos(player.angle) * 50;
-            const eggY = player.y - Math.sin(player.angle) * 50;
+                const dx = croc.x - player.x;
+                const dy = croc.y - player.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const minDist = (croc.radius + player.radius) * 0.8;
 
-            eggs.push(new Egg(eggX, eggY, player.teamId));
+                if (dist < minDist) {
+                    // Mating! Create an egg
+                    const cost = getEggCost();
+                    player.size -= cost;
 
-            // Brief cooldown
-            canLayEgg = false;
-            setTimeout(() => { canLayEgg = true; }, 500);
+                    // Create egg at mating location
+                    const eggX = (player.x + croc.x) / 2;
+                    const eggY = (player.y + croc.y) / 2;
+
+                    const egg = new Egg(eggX, eggY, player.teamId);
+                    egg.hatchSize = offspringSize;  // Store the offspring size
+                    eggs.push(egg);
+
+                    // Start cooldown
+                    matingCooldown = CONFIG.matingCooldown;
+                    break;
+                }
+            }
         }
 
         // Hatch eggs and spawn new crocodiles
@@ -1329,11 +1393,12 @@
                 egg.update();
 
                 if (egg.hatched) {
-                    // Spawn a new crocodile at egg location
+                    // Spawn a new crocodile at egg location with chosen size
+                    const hatchSize = egg.hatchSize || offspringSize;
                     const newCroc = new Crocodile(
                         egg.x,
                         egg.y,
-                        CONFIG.hatchSize,
+                        hatchSize,
                         false,
                         egg.teamId
                     );
@@ -1396,6 +1461,12 @@
                     mate.calculateSwarmBehavior(playerTeammates);
                 }
             }
+
+            // Check for mating (female player + male teammate collision)
+            checkMating(allCrocs);
+
+            // Update mating cooldown
+            if (matingCooldown > 0) matingCooldown--;
 
             // Check collisions
             checkCollisions();
@@ -1503,16 +1574,32 @@
             // Update UI
             sizeDisplay.textContent = player.size.toFixed(1);
 
-            // Update team count
-            const allyCount = (teamGroups[0] || []).filter(c => c !== player && c.alive).length;
+            // Update team count with male count
+            const allies = (teamGroups[0] || []).filter(c => c !== player && c.alive);
+            const maleCount = allies.filter(c => c.gender === 'male').length;
+            const femaleCount = allies.filter(c => c.gender === 'female').length;
             const eggCount = eggs.filter(e => e.teamId === 0).length;
             document.getElementById('teamCount').textContent =
-                `${allyCount} Verbündete` + (eggCount > 0 ? ` + ${eggCount} 🥚` : '');
+                `${maleCount}♂ ${femaleCount}♀` + (eggCount > 0 ? ` + ${eggCount}🥚` : '');
 
-            // Update egg button state
-            const eggBtn = document.getElementById('eggBtn');
-            const canAffordEgg = player.size >= CONFIG.eggCost + 0.5;
-            eggBtn.disabled = !canAffordEgg || !canLayEgg;
+            // Update offspring cost display
+            const cost = getEggCost();
+            document.getElementById('eggCostDisplay').textContent =
+                `Kostet ${cost.toFixed(1)} Größe` + (canAffordMating() ? '' : ' (zu klein!)');
+            document.getElementById('eggCostDisplay').style.color =
+                canAffordMating() ? '#4ade80' : '#ef4444';
+
+            // Update mating hint
+            const matingHint = document.querySelector('.mating-hint');
+            if (matingCooldown > 0) {
+                matingHint.textContent = `⏳ Warte... (${Math.ceil(matingCooldown / 60)}s)`;
+            } else if (!canAffordMating()) {
+                matingHint.textContent = '❌ Zu klein zum Paaren!';
+            } else if (maleCount === 0) {
+                matingHint.textContent = '⚠️ Kein ♂ in deinem Team!';
+            } else {
+                matingHint.textContent = '♀ Fahre in ein ♂ um ein Ei zu legen';
+            }
 
             requestAnimationFrame(gameLoop);
         }
@@ -1745,12 +1832,6 @@
         document.addEventListener('keydown', (e) => {
             keys[e.key] = true;
             updateKeyboardInput();
-
-            // Space bar to lay egg
-            if (e.key === ' ' || e.code === 'Space') {
-                e.preventDefault();
-                layEgg();
-            }
         });
 
         document.addEventListener('keyup', (e) => {
@@ -1774,6 +1855,18 @@
                 keyboardInput.y /= length;
             }
         }
+
+        // ============================================
+        // Offspring Level Slider
+        // ============================================
+
+        const offspringSlider = document.getElementById('offspringLevel');
+        const offspringDisplay = document.getElementById('offspringLevelDisplay');
+
+        offspringSlider.addEventListener('input', (e) => {
+            offspringSize = parseFloat(e.target.value);
+            offspringDisplay.textContent = offspringSize.toFixed(1);
+        });
 
         // ============================================
         // Start Game
