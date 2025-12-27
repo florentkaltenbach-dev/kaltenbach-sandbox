@@ -507,8 +507,8 @@
 
             get speed() {
                 const baseSpeed = this.isPlayer ? CONFIG.baseSpeed : CONFIG.baseSpeed * CONFIG.aiSpeedFactor;
-                // Bigger = slightly slower
-                return baseSpeed * (1.2 - this.size * 0.1);
+                // Bigger = faster (size multiplier: 0.8 at size 0, scales up with size)
+                return baseSpeed * (0.8 + this.size * 0.15);
             }
 
             update(inputX, inputY) {
