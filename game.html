@@ -291,6 +291,73 @@
             font-style: italic;
         }
 
+        .upgrade-panel {
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 12px 16px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            margin-top: 10px;
+            pointer-events: auto;
+        }
+
+        .upgrade-panel h2 {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.7;
+            margin-bottom: 8px;
+        }
+
+        .upgrade-points {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #fbbf24;
+            margin-bottom: 10px;
+        }
+
+        .upgrade-item {
+            margin-bottom: 8px;
+        }
+
+        .upgrade-btn {
+            padding: 8px 16px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            background: linear-gradient(90deg, #8b5cf6, #6d28d9);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s;
+            width: 100%;
+        }
+
+        .upgrade-btn:hover:not(:disabled) {
+            transform: scale(1.02);
+            box-shadow: 0 3px 15px rgba(139, 92, 246, 0.4);
+        }
+
+        .upgrade-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            background: linear-gradient(90deg, #6b7280, #4b5563);
+        }
+
+        .upgrade-info {
+            font-size: 0.7rem;
+            opacity: 0.6;
+            text-align: center;
+            margin-top: 4px;
+        }
+
+        .upgrade-level {
+            font-size: 0.75rem;
+            color: #a78bfa;
+            text-align: center;
+            margin-top: 2px;
+        }
+
         .minimap {
             position: fixed;
             bottom: 20px;
@@ -347,6 +414,17 @@
             </div>
             <div class="egg-cost" id="eggCostDisplay">Kostet 0.5 Größe</div>
             <div class="mating-hint">♀ Fahre in ein ♂ um ein Ei zu legen</div>
+        </div>
+        <div class="upgrade-panel" id="upgradePanel">
+            <h2>Upgrades</h2>
+            <div class="upgrade-points">⭐ <span id="upgradePoints">0</span> Punkte</div>
+            <div class="upgrade-item" id="tentacleUpgrade">
+                <button class="upgrade-btn" id="tentacleBtn" onclick="buyTentacles()">
+                    🦑 Fangarme
+                </button>
+                <div class="upgrade-info">Tötet Feinde in der Nähe (5⭐)</div>
+                <div class="upgrade-level">Level: <span id="tentacleLevel">0</span></div>
+            </div>
         </div>
     </div>
 
@@ -439,7 +517,16 @@
             // Hiding spots parameters
             numHidingSpots: 5,
             hidingSpotRadius: 80,
-            maxSizeForHiding: 0.9  // only crocs this size or smaller can hide
+            maxSizeForHiding: 0.9,  // only crocs this size or smaller can hide
+            // Meat parameters
+            meatGrowth: 0.12,       // size gain from eating meat
+            meatDuration: 600,      // frames before meat disappears (10 seconds)
+            // Upgrade parameters
+            tentacleCost: 5,        // upgrade points to buy tentacles
+            tentacleRadius: 100,    // range of tentacle attack
+            tentacleDamage: 0.3,    // damage per hit
+            tentacleCooldown: 60,   // frames between attacks
+            killPoints: 1           // points for killing an enemy
         };
 
         // Team colors
@@ -456,6 +543,7 @@
         let aiCrocs = [];
         let eggs = [];  // Eggs waiting to hatch
         let food = [];  // Fish and frogs to eat
+        let meat = [];  // Meat from dead crocodiles
         let hidingSpots = [];  // Safe zones for small crocs
         let joystickInput = { x: 0, y: 0 };
         let keyboardInput = { x: 0, y: 0 };
@@ -464,6 +552,10 @@
         let foodSpawnTimer = 0;
         let offspringSize = 0.6;  // Selected offspring size
         let matingCooldown = 0;   // Cooldown timer for mating
+        // Upgrade system
+        let upgradePoints = 0;
+        let tentacleLevel = 0;
+        let tentacleCooldown = 0;
 
         // ============================================
         // Crocodile Class
@@ -1035,6 +1127,103 @@
         }
 
         // ============================================
+        // Meat Class (dropped by dead crocodiles)
+        // ============================================
+
+        class Meat {
+            constructor(x, y, size) {
+                this.x = x;
+                this.y = y;
+                this.size = size;  // Size of the crocodile that died
+                this.alive = true;
+                this.timer = CONFIG.meatDuration;
+                this.animTimer = Math.random() * Math.PI * 2;
+            }
+
+            get radius() {
+                return 10 + this.size * 8;
+            }
+
+            get growthValue() {
+                return CONFIG.meatGrowth + this.size * 0.05;
+            }
+
+            update() {
+                if (!this.alive) return;
+
+                this.animTimer += 0.05;
+                this.timer--;
+
+                if (this.timer <= 0) {
+                    this.alive = false;
+                }
+            }
+
+            draw(ctx, camera) {
+                if (!this.alive) return;
+
+                const screenX = this.x - camera.x;
+                const screenY = this.y - camera.y;
+
+                if (screenX < -50 || screenX > canvas.width + 50 ||
+                    screenY < -50 || screenY > canvas.height + 50) {
+                    return;
+                }
+
+                ctx.save();
+                ctx.translate(screenX, screenY);
+
+                // Pulsing animation
+                const pulse = 1 + Math.sin(this.animTimer) * 0.1;
+                const fadeOut = Math.min(1, this.timer / 120);  // Fade in last 2 seconds
+
+                ctx.globalAlpha = fadeOut;
+
+                // Meat chunks
+                const baseSize = this.radius * pulse;
+
+                // Shadow
+                ctx.beginPath();
+                ctx.ellipse(2, 3, baseSize, baseSize * 0.6, 0, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                ctx.fill();
+
+                // Main meat piece (red)
+                ctx.beginPath();
+                ctx.ellipse(0, 0, baseSize, baseSize * 0.7, 0, 0, Math.PI * 2);
+                ctx.fillStyle = '#dc2626';
+                ctx.fill();
+                ctx.strokeStyle = '#991b1b';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Fat/marbling
+                ctx.beginPath();
+                ctx.ellipse(-baseSize * 0.3, -baseSize * 0.2, baseSize * 0.3, baseSize * 0.2, 0.5, 0, Math.PI * 2);
+                ctx.fillStyle = '#fecaca';
+                ctx.fill();
+
+                // Bone
+                ctx.fillStyle = '#f5f5dc';
+                ctx.beginPath();
+                ctx.ellipse(baseSize * 0.4, 0, baseSize * 0.15, baseSize * 0.4, 0.3, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = '#d4d4aa';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+
+                // Label
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                ctx.font = 'bold 10px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('🍖', 0, -baseSize - 5);
+
+                ctx.globalAlpha = 1;
+                ctx.restore();
+            }
+        }
+
+        // ============================================
         // Hiding Spot Class
         // ============================================
 
@@ -1202,6 +1391,15 @@
 
                             // Predator eats prey
                             predator.grow(prey.size * CONFIG.growthFactor);
+
+                            // Drop meat at prey's location
+                            meat.push(new Meat(prey.x, prey.y, prey.size));
+
+                            // Award upgrade points if player's team killed an enemy
+                            if (predator.teamId === 0 && prey.teamId !== 0) {
+                                upgradePoints += CONFIG.killPoints;
+                            }
+
                             prey.alive = false;
 
                             if (prey.isPlayer) {
@@ -1228,6 +1426,67 @@
                     }
                 }
             }
+
+            // Check crocodile vs meat collisions
+            for (const croc of allCrocs) {
+                for (const m of meat) {
+                    if (!m.alive) continue;
+
+                    const dx = croc.x - m.x;
+                    const dy = croc.y - m.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < croc.radius + m.radius) {
+                        // Eat the meat!
+                        croc.grow(m.growthValue);
+                        m.alive = false;
+                    }
+                }
+            }
+        }
+
+        // ============================================
+        // Upgrade Functions
+        // ============================================
+
+        function buyTentacles() {
+            if (upgradePoints >= CONFIG.tentacleCost) {
+                upgradePoints -= CONFIG.tentacleCost;
+                tentacleLevel++;
+            }
+        }
+
+        function useTentacles(allCrocs) {
+            if (tentacleLevel <= 0) return;
+            if (tentacleCooldown > 0) return;
+            if (!player.alive) return;
+
+            // Find enemies in range
+            const range = CONFIG.tentacleRadius * (1 + tentacleLevel * 0.2);
+            const damage = CONFIG.tentacleDamage * tentacleLevel;
+
+            for (const croc of allCrocs) {
+                if (croc === player || !croc.alive) continue;
+                if (croc.teamId === player.teamId) continue;  // Don't attack teammates
+
+                const dx = croc.x - player.x;
+                const dy = croc.y - player.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < range) {
+                    // Deal damage
+                    croc.size -= damage;
+
+                    // If croc dies from tentacle damage
+                    if (croc.size <= 0.3) {
+                        croc.alive = false;
+                        meat.push(new Meat(croc.x, croc.y, 0.5));
+                        upgradePoints += CONFIG.killPoints;
+                    }
+                }
+            }
+
+            tentacleCooldown = CONFIG.tentacleCooldown;
         }
 
         // ============================================
@@ -1253,6 +1512,12 @@
             foodSpawnTimer = 0;
             matingCooldown = 0;
             offspringSize = 0.6;
+
+            // Reset upgrade system
+            meat = [];
+            upgradePoints = 0;
+            tentacleLevel = 0;
+            tentacleCooldown = 0;
 
             // Create hiding spots scattered around the world
             for (let i = 0; i < CONFIG.numHidingSpots; i++) {
@@ -1488,6 +1753,16 @@
                 food.push(new Food(x, y));
             }
 
+            // Update meat
+            for (const m of meat) {
+                m.update();
+            }
+            meat = meat.filter(m => m.alive);
+
+            // Update tentacle cooldown and auto-attack
+            if (tentacleCooldown > 0) tentacleCooldown--;
+            useTentacles(allCrocs);
+
             // Spawn new small crocodiles periodically
             spawnTimer++;
             if (spawnTimer >= CONFIG.spawnInterval) {
@@ -1516,6 +1791,11 @@
             // Draw food
             for (const f of food) {
                 f.draw(ctx, camera);
+            }
+
+            // Draw meat
+            for (const m of meat) {
+                m.draw(ctx, camera);
             }
 
             // Draw eggs
@@ -1568,6 +1848,55 @@
                 }
             }
 
+            // Draw tentacle attack effect
+            if (tentacleLevel > 0 && player.alive) {
+                const playerScreenX = player.x - camera.x;
+                const playerScreenY = player.y - camera.y;
+                const range = CONFIG.tentacleRadius * (1 + tentacleLevel * 0.2);
+
+                // Draw tentacle range circle
+                ctx.beginPath();
+                ctx.arc(playerScreenX, playerScreenY, range, 0, Math.PI * 2);
+
+                // Flash effect when attacking (cooldown just started)
+                if (tentacleCooldown > CONFIG.tentacleCooldown - 10) {
+                    ctx.strokeStyle = 'rgba(168, 85, 247, 0.8)';
+                    ctx.lineWidth = 4;
+                    ctx.fillStyle = 'rgba(168, 85, 247, 0.2)';
+                    ctx.fill();
+                } else {
+                    ctx.strokeStyle = 'rgba(168, 85, 247, 0.3)';
+                    ctx.lineWidth = 2;
+                }
+                ctx.stroke();
+
+                // Draw tentacle arms
+                const numTentacles = 4 + tentacleLevel * 2;
+                const animOffset = Date.now() * 0.003;
+
+                for (let i = 0; i < numTentacles; i++) {
+                    const angle = (i / numTentacles) * Math.PI * 2 + animOffset;
+                    const waveOffset = Math.sin(Date.now() * 0.005 + i) * 10;
+
+                    ctx.beginPath();
+                    ctx.moveTo(playerScreenX, playerScreenY);
+
+                    // Draw wavy tentacle
+                    const segments = 5;
+                    for (let s = 1; s <= segments; s++) {
+                        const dist = (range * s / segments) + waveOffset * (s / segments);
+                        const segAngle = angle + Math.sin(Date.now() * 0.01 + s) * 0.2;
+                        const tx = playerScreenX + Math.cos(segAngle) * dist;
+                        const ty = playerScreenY + Math.sin(segAngle) * dist;
+                        ctx.lineTo(tx, ty);
+                    }
+
+                    ctx.strokeStyle = `rgba(168, 85, 247, ${0.6 - (tentacleCooldown / CONFIG.tentacleCooldown) * 0.3})`;
+                    ctx.lineWidth = 3 - (tentacleCooldown / CONFIG.tentacleCooldown) * 1.5;
+                    ctx.stroke();
+                }
+            }
+
             // Draw minimap
             drawMinimap();
 
@@ -1600,6 +1929,15 @@
             } else {
                 matingHint.textContent = '♀ Fahre in ein ♂ um ein Ei zu legen';
             }
+
+            // Update upgrade UI
+            document.getElementById('upgradePoints').textContent = upgradePoints;
+            document.getElementById('tentacleLevel').textContent = tentacleLevel;
+            const tentacleBtn = document.getElementById('tentacleBtn');
+            tentacleBtn.disabled = upgradePoints < CONFIG.tentacleCost;
+            tentacleBtn.textContent = tentacleLevel > 0
+                ? `🦑 Fangarme verbessern (${CONFIG.tentacleCost}⭐)`
+                : `🦑 Fangarme kaufen (${CONFIG.tentacleCost}⭐)`;
 
             requestAnimationFrame(gameLoop);
         }
@@ -1649,6 +1987,18 @@
                 minimapCtx.beginPath();
                 minimapCtx.arc(fx, fy, 2, 0, Math.PI * 2);
                 minimapCtx.fillStyle = f.type === 'fish' ? '#60a5fa' : '#84cc16';
+                minimapCtx.fill();
+            }
+
+            // Draw meat on minimap
+            for (const m of meat) {
+                if (!m.alive) continue;
+                const mx = m.x * scaleX;
+                const my = m.y * scaleY;
+
+                minimapCtx.beginPath();
+                minimapCtx.arc(mx, my, 3, 0, Math.PI * 2);
+                minimapCtx.fillStyle = '#dc2626';
                 minimapCtx.fill();
             }
 
