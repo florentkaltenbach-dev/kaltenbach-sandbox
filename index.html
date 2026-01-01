@@ -223,11 +223,17 @@
             color: #1a1a2e;
         }
 
-        .floating-game-button {
+        .game-buttons {
             position: fixed;
             bottom: 30px;
             right: 30px;
             z-index: 100;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .floating-game-button {
             padding: 14px 28px;
             color: #1a1a2e;
             text-decoration: none;
@@ -238,6 +244,7 @@
             border-radius: 12px;
             transition: all 0.3s;
             box-shadow: 0 4px 20px rgba(0, 217, 255, 0.3);
+            text-align: center;
         }
 
         .floating-game-button:hover {
@@ -247,6 +254,15 @@
 
         .floating-game-button:active {
             transform: translateY(-1px);
+        }
+
+        .floating-game-button.pokemon {
+            background: linear-gradient(90deg, #ffd43b, #ff6b35);
+            box-shadow: 0 4px 20px rgba(255, 212, 59, 0.3);
+        }
+
+        .floating-game-button.pokemon:hover {
+            box-shadow: 0 8px 30px rgba(255, 212, 59, 0.5);
         }
 
         /* Card indicators */
@@ -515,8 +531,11 @@
         <span>↕ Scroll or swipe to flip cards</span>
     </div>
 
-    <!-- Floating Game Button -->
-    <a href="game.html" class="floating-game-button">Play Game</a>
+    <!-- Floating Game Buttons -->
+    <div class="game-buttons">
+        <a href="pokemon-td.html" class="floating-game-button pokemon">Pokemon TD</a>
+        <a href="game.html" class="floating-game-button">Krokodil-Spiel</a>
+    </div>
 
     <!-- 3D Scene -->
     <div class="scene" id="scene">

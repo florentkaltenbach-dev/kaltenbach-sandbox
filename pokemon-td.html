@@ -1,0 +1,1311 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Pokemon Tower Defense</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            height: 100%;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            color: white;
+        }
+
+        #gameCanvas {
+            display: block;
+            margin: 0 auto;
+            background: #2d5a27;
+            border-radius: 8px;
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px;
+            height: 100%;
+        }
+
+        .top-bar {
+            display: flex;
+            gap: 30px;
+            margin-bottom: 10px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px 25px;
+            border-radius: 10px;
+            font-size: 1.1rem;
+        }
+
+        .stat {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .stat-icon {
+            font-size: 1.3rem;
+        }
+
+        .stat-value {
+            font-weight: bold;
+            color: #ffd700;
+        }
+
+        .lives { color: #ff6b6b; }
+        .money { color: #4ecdc4; }
+        .wave { color: #ffe66d; }
+
+        .shop-panel {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px 15px;
+            border-radius: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .pokemon-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 8px 12px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            cursor: pointer;
+            transition: all 0.2s;
+            min-width: 80px;
+        }
+
+        .pokemon-btn:hover:not(.disabled) {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .pokemon-btn.selected {
+            border-color: #ffd700;
+            background: rgba(255, 215, 0, 0.2);
+            box-shadow: 0 0 15px rgba(255, 215, 0, 0.3);
+        }
+
+        .pokemon-btn.disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .pokemon-btn .sprite {
+            font-size: 2rem;
+            margin-bottom: 3px;
+        }
+
+        .pokemon-btn .name {
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
+
+        .pokemon-btn .cost {
+            font-size: 0.7rem;
+            color: #4ecdc4;
+        }
+
+        .fire { border-color: #ff6b35; }
+        .fire.selected { border-color: #ff6b35; background: rgba(255, 107, 53, 0.3); }
+
+        .water { border-color: #4dabf7; }
+        .water.selected { border-color: #4dabf7; background: rgba(77, 171, 247, 0.3); }
+
+        .grass { border-color: #51cf66; }
+        .grass.selected { border-color: #51cf66; background: rgba(81, 207, 102, 0.3); }
+
+        .electric { border-color: #ffd43b; }
+        .electric.selected { border-color: #ffd43b; background: rgba(255, 212, 59, 0.3); }
+
+        .normal { border-color: #adb5bd; }
+        .normal.selected { border-color: #adb5bd; background: rgba(173, 181, 189, 0.3); }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .control-btn {
+            padding: 10px 20px;
+            font-size: 1rem;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .start-btn {
+            background: linear-gradient(135deg, #51cf66, #37b24d);
+            color: white;
+        }
+
+        .start-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 15px rgba(81, 207, 102, 0.5);
+        }
+
+        .speed-btn {
+            background: linear-gradient(135deg, #ffd43b, #fab005);
+            color: #333;
+        }
+
+        .game-over-screen, .win-screen {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.95);
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            z-index: 100;
+            display: none;
+        }
+
+        .game-over-screen.visible, .win-screen.visible {
+            display: block;
+        }
+
+        .game-over-screen h1 { color: #ff6b6b; }
+        .win-screen h1 { color: #51cf66; }
+
+        .game-over-screen p, .win-screen p {
+            margin: 15px 0;
+            font-size: 1.1rem;
+        }
+
+        .restart-btn {
+            padding: 12px 30px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            background: linear-gradient(135deg, #4dabf7, #339af0);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            margin-top: 15px;
+        }
+
+        .restart-btn:hover {
+            transform: scale(1.05);
+        }
+
+        .tooltip {
+            position: fixed;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            pointer-events: none;
+            z-index: 50;
+            display: none;
+            max-width: 200px;
+        }
+
+        .tooltip.visible {
+            display: block;
+        }
+
+        .back-link {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            padding: 8px 15px;
+            color: #4dabf7;
+            text-decoration: none;
+            font-weight: 600;
+            border: 2px solid #4dabf7;
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.5);
+            transition: all 0.3s;
+            z-index: 10;
+        }
+
+        .back-link:hover {
+            background: #4dabf7;
+            color: #1a1a2e;
+        }
+
+        .type-chart {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 0.75rem;
+        }
+
+        .type-chart h3 {
+            margin-bottom: 5px;
+            font-size: 0.8rem;
+        }
+
+        .type-row {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin: 3px 0;
+        }
+
+        @media (max-width: 768px) {
+            .top-bar {
+                gap: 15px;
+                font-size: 0.9rem;
+                padding: 8px 15px;
+            }
+
+            .pokemon-btn {
+                min-width: 65px;
+                padding: 6px 8px;
+            }
+
+            .pokemon-btn .sprite {
+                font-size: 1.5rem;
+            }
+
+            .type-chart {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <a href="index.html" class="back-link">&larr; Zurück</a>
+
+    <div class="type-chart">
+        <h3>Typ-Effektivität:</h3>
+        <div class="type-row">🔥 → 🌿 (2x)</div>
+        <div class="type-row">🌿 → 💧 (2x)</div>
+        <div class="type-row">💧 → 🔥 (2x)</div>
+        <div class="type-row">⚡ → 💧 (2x)</div>
+    </div>
+
+    <div class="game-container">
+        <div class="top-bar">
+            <div class="stat">
+                <span class="stat-icon">❤️</span>
+                <span class="stat-value lives" id="livesDisplay">20</span>
+            </div>
+            <div class="stat">
+                <span class="stat-icon">💰</span>
+                <span class="stat-value money" id="moneyDisplay">100</span>
+            </div>
+            <div class="stat">
+                <span class="stat-icon">🌊</span>
+                <span>Welle:</span>
+                <span class="stat-value wave" id="waveDisplay">1</span>
+            </div>
+            <div class="stat">
+                <span class="stat-icon">👾</span>
+                <span class="stat-value" id="enemyCount">0</span>
+            </div>
+        </div>
+
+        <canvas id="gameCanvas"></canvas>
+
+        <div class="shop-panel">
+            <div class="pokemon-btn fire" data-pokemon="charmander" onclick="selectPokemon('charmander')">
+                <span class="sprite">🔥</span>
+                <span class="name">Glumanda</span>
+                <span class="cost">50 💰</span>
+            </div>
+            <div class="pokemon-btn water" data-pokemon="squirtle" onclick="selectPokemon('squirtle')">
+                <span class="sprite">💧</span>
+                <span class="name">Schiggy</span>
+                <span class="cost">50 💰</span>
+            </div>
+            <div class="pokemon-btn grass" data-pokemon="bulbasaur" onclick="selectPokemon('bulbasaur')">
+                <span class="sprite">🌿</span>
+                <span class="name">Bisasam</span>
+                <span class="cost">50 💰</span>
+            </div>
+            <div class="pokemon-btn electric" data-pokemon="pikachu" onclick="selectPokemon('pikachu')">
+                <span class="sprite">⚡</span>
+                <span class="name">Pikachu</span>
+                <span class="cost">75 💰</span>
+            </div>
+            <div class="pokemon-btn normal" data-pokemon="eevee" onclick="selectPokemon('eevee')">
+                <span class="sprite">🦊</span>
+                <span class="name">Evoli</span>
+                <span class="cost">60 💰</span>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button class="control-btn start-btn" id="startWaveBtn" onclick="startWave()">
+                ▶ Welle starten
+            </button>
+            <button class="control-btn speed-btn" onclick="toggleSpeed()">
+                🚀 1x
+            </button>
+        </div>
+    </div>
+
+    <div class="tooltip" id="tooltip"></div>
+
+    <div class="game-over-screen" id="gameOverScreen">
+        <h1>💀 Game Over!</h1>
+        <p>Die wilden Pokemon haben dich überrannt!</p>
+        <p>Erreichte Welle: <strong id="finalWave">1</strong></p>
+        <button class="restart-btn" onclick="restartGame()">🔄 Nochmal spielen</button>
+    </div>
+
+    <div class="win-screen" id="winScreen">
+        <h1>🏆 Gewonnen!</h1>
+        <p>Du hast alle Wellen besiegt!</p>
+        <button class="restart-btn" onclick="restartGame()">🔄 Nochmal spielen</button>
+    </div>
+
+    <script>
+        // ============================================
+        // Pokemon Tower Defense
+        // ============================================
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Responsive canvas size
+        function resizeCanvas() {
+            const maxWidth = Math.min(800, window.innerWidth - 40);
+            const maxHeight = Math.min(500, window.innerHeight - 250);
+            canvas.width = maxWidth;
+            canvas.height = maxHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // ============================================
+        // Game Configuration
+        // ============================================
+
+        const CONFIG = {
+            cellSize: 50,
+            startMoney: 100,
+            startLives: 20,
+            maxWaves: 15,
+            waveDelay: 1500,  // ms between enemies in wave
+            baseEnemySpeed: 1,
+            baseEnemyHealth: 50
+        };
+
+        // Pokemon Types
+        const TYPES = {
+            fire: { color: '#ff6b35', emoji: '🔥', strongVs: ['grass'], weakVs: ['water'] },
+            water: { color: '#4dabf7', emoji: '💧', strongVs: ['fire'], weakVs: ['grass', 'electric'] },
+            grass: { color: '#51cf66', emoji: '🌿', strongVs: ['water'], weakVs: ['fire'] },
+            electric: { color: '#ffd43b', emoji: '⚡', strongVs: ['water'], weakVs: [] },
+            normal: { color: '#adb5bd', emoji: '⭐', strongVs: [], weakVs: [] }
+        };
+
+        // Tower Pokemon definitions
+        const TOWER_POKEMON = {
+            charmander: {
+                name: 'Glumanda',
+                type: 'fire',
+                cost: 50,
+                damage: 15,
+                range: 100,
+                fireRate: 60,  // frames between shots
+                emoji: '🔥',
+                color: '#ff6b35',
+                projectileColor: '#ff4500',
+                evolution: 'charmeleon'
+            },
+            squirtle: {
+                name: 'Schiggy',
+                type: 'water',
+                cost: 50,
+                damage: 12,
+                range: 110,
+                fireRate: 50,
+                emoji: '💧',
+                color: '#4dabf7',
+                projectileColor: '#00bfff',
+                evolution: 'wartortle'
+            },
+            bulbasaur: {
+                name: 'Bisasam',
+                type: 'grass',
+                cost: 50,
+                damage: 10,
+                range: 90,
+                fireRate: 45,
+                emoji: '🌿',
+                color: '#51cf66',
+                projectileColor: '#32cd32',
+                evolution: 'ivysaur'
+            },
+            pikachu: {
+                name: 'Pikachu',
+                type: 'electric',
+                cost: 75,
+                damage: 20,
+                range: 120,
+                fireRate: 40,
+                emoji: '⚡',
+                color: '#ffd43b',
+                projectileColor: '#ffff00',
+                evolution: 'raichu'
+            },
+            eevee: {
+                name: 'Evoli',
+                type: 'normal',
+                cost: 60,
+                damage: 14,
+                range: 100,
+                fireRate: 55,
+                emoji: '🦊',
+                color: '#c4a484',
+                projectileColor: '#dda0dd',
+                evolution: null
+            }
+        };
+
+        // Enemy Pokemon definitions
+        const ENEMY_POKEMON = {
+            rattata: { name: 'Rattfratz', type: 'normal', emoji: '🐀', health: 40, speed: 1.2, reward: 10 },
+            pidgey: { name: 'Taubsi', type: 'normal', emoji: '🐦', health: 50, speed: 1.0, reward: 12 },
+            zubat: { name: 'Zubat', type: 'normal', emoji: '🦇', health: 35, speed: 1.4, reward: 8 },
+            geodude: { name: 'Kleinstein', type: 'normal', emoji: '🪨', health: 100, speed: 0.6, reward: 20 },
+            magikarp: { name: 'Karpador', type: 'water', emoji: '🐟', health: 30, speed: 1.5, reward: 5 },
+            oddish: { name: 'Myrapla', type: 'grass', emoji: '🌱', health: 45, speed: 1.0, reward: 12 },
+            vulpix: { name: 'Vulpix', type: 'fire', emoji: '🦊', health: 60, speed: 1.1, reward: 15 },
+            gastly: { name: 'Nebulak', type: 'normal', emoji: '👻', health: 55, speed: 1.3, reward: 18 },
+            machop: { name: 'Machollo', type: 'normal', emoji: '💪', health: 80, speed: 0.8, reward: 16 },
+            onix: { name: 'Onix', type: 'normal', emoji: '🐍', health: 200, speed: 0.4, reward: 40 }
+        };
+
+        // Wave definitions
+        const WAVES = [
+            { enemies: ['rattata', 'rattata', 'rattata', 'rattata', 'rattata'] },
+            { enemies: ['rattata', 'rattata', 'pidgey', 'pidgey', 'rattata', 'rattata'] },
+            { enemies: ['pidgey', 'pidgey', 'pidgey', 'zubat', 'zubat', 'zubat'] },
+            { enemies: ['rattata', 'rattata', 'geodude', 'rattata', 'rattata'] },
+            { enemies: ['magikarp', 'magikarp', 'magikarp', 'oddish', 'oddish', 'vulpix'] },
+            { enemies: ['zubat', 'zubat', 'gastly', 'gastly', 'zubat', 'zubat'] },
+            { enemies: ['geodude', 'machop', 'machop', 'geodude', 'machop'] },
+            { enemies: ['vulpix', 'vulpix', 'oddish', 'oddish', 'magikarp', 'magikarp', 'magikarp'] },
+            { enemies: ['gastly', 'gastly', 'gastly', 'machop', 'machop', 'geodude'] },
+            { enemies: ['onix', 'rattata', 'rattata', 'rattata', 'rattata', 'rattata'] },
+            { enemies: ['vulpix', 'vulpix', 'vulpix', 'oddish', 'oddish', 'oddish', 'magikarp', 'magikarp'] },
+            { enemies: ['machop', 'machop', 'machop', 'geodude', 'geodude', 'onix'] },
+            { enemies: ['gastly', 'gastly', 'gastly', 'gastly', 'gastly', 'gastly', 'gastly'] },
+            { enemies: ['onix', 'onix', 'geodude', 'geodude', 'machop', 'machop'] },
+            { enemies: ['onix', 'onix', 'onix', 'gastly', 'gastly', 'vulpix', 'vulpix', 'oddish', 'oddish'] }
+        ];
+
+        // ============================================
+        // Path Definition
+        // ============================================
+
+        function generatePath() {
+            const cols = Math.floor(canvas.width / CONFIG.cellSize);
+            const rows = Math.floor(canvas.height / CONFIG.cellSize);
+
+            // Create a winding path
+            const path = [];
+            const midY = Math.floor(rows / 2);
+
+            // Start from left edge
+            let x = 0;
+            let y = midY;
+
+            path.push({ x: -1, y: midY });  // Start off-screen
+
+            // Create path segments
+            while (x < cols) {
+                path.push({ x, y });
+
+                // Move right
+                x++;
+                if (x >= cols) break;
+
+                // Occasionally go up or down
+                if (x % 3 === 0 && path.length > 2) {
+                    const direction = (x % 6 === 0) ? -1 : 1;
+                    const steps = Math.min(2, direction > 0 ? rows - y - 2 : y - 1);
+
+                    for (let i = 0; i < steps; i++) {
+                        y += direction;
+                        if (y < 1) y = 1;
+                        if (y >= rows - 1) y = rows - 2;
+                        path.push({ x, y });
+                    }
+                    x++;
+                    if (x >= cols) break;
+                    path.push({ x, y });
+                }
+            }
+
+            // End off-screen
+            path.push({ x: cols, y });
+
+            return path;
+        }
+
+        // ============================================
+        // Game State
+        // ============================================
+
+        let path = [];
+        let towers = [];
+        let enemies = [];
+        let projectiles = [];
+        let money = CONFIG.startMoney;
+        let lives = CONFIG.startLives;
+        let currentWave = 0;
+        let waveInProgress = false;
+        let selectedPokemon = null;
+        let gameSpeed = 1;
+        let gameOver = false;
+        let gameWon = false;
+        let enemySpawnQueue = [];
+        let spawnTimer = 0;
+
+        // ============================================
+        // Classes
+        // ============================================
+
+        class Tower {
+            constructor(x, y, type) {
+                this.x = x;
+                this.y = y;
+                this.type = type;
+                this.data = TOWER_POKEMON[type];
+                this.level = 1;
+                this.cooldown = 0;
+                this.target = null;
+                this.angle = 0;
+            }
+
+            get range() {
+                return this.data.range * (1 + (this.level - 1) * 0.2);
+            }
+
+            get damage() {
+                return this.data.damage * (1 + (this.level - 1) * 0.5);
+            }
+
+            get fireRate() {
+                return Math.max(15, this.data.fireRate - (this.level - 1) * 5);
+            }
+
+            get screenX() {
+                return this.x * CONFIG.cellSize + CONFIG.cellSize / 2;
+            }
+
+            get screenY() {
+                return this.y * CONFIG.cellSize + CONFIG.cellSize / 2;
+            }
+
+            get upgradeCost() {
+                return Math.floor(this.data.cost * 0.6 * this.level);
+            }
+
+            update() {
+                if (this.cooldown > 0) {
+                    this.cooldown -= gameSpeed;
+                }
+
+                // Find target
+                this.target = this.findTarget();
+
+                if (this.target && this.cooldown <= 0) {
+                    this.shoot();
+                }
+
+                // Update angle to face target
+                if (this.target) {
+                    const dx = this.target.screenX - this.screenX;
+                    const dy = this.target.screenY - this.screenY;
+                    this.angle = Math.atan2(dy, dx);
+                }
+            }
+
+            findTarget() {
+                let closest = null;
+                let closestDist = Infinity;
+
+                for (const enemy of enemies) {
+                    if (!enemy.alive) continue;
+
+                    const dx = enemy.screenX - this.screenX;
+                    const dy = enemy.screenY - this.screenY;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist <= this.range && dist < closestDist) {
+                        closestDist = dist;
+                        closest = enemy;
+                    }
+                }
+
+                return closest;
+            }
+
+            shoot() {
+                if (!this.target) return;
+
+                // Calculate damage with type effectiveness
+                let damage = this.damage;
+                const attackType = this.data.type;
+                const defenseType = this.target.data.type;
+
+                if (TYPES[attackType].strongVs.includes(defenseType)) {
+                    damage *= 2;
+                }
+                if (TYPES[attackType].weakVs.includes(defenseType)) {
+                    damage *= 0.5;
+                }
+
+                projectiles.push(new Projectile(
+                    this.screenX,
+                    this.screenY,
+                    this.target,
+                    damage,
+                    this.data.projectileColor,
+                    this.data.type
+                ));
+
+                this.cooldown = this.fireRate;
+            }
+
+            draw() {
+                const x = this.screenX;
+                const y = this.screenY;
+                const size = CONFIG.cellSize * 0.4;
+
+                // Draw range circle when selected
+                if (selectedTower === this) {
+                    ctx.beginPath();
+                    ctx.arc(x, y, this.range, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+                    ctx.fill();
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+
+                // Draw tower base
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fillStyle = this.data.color;
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Draw emoji
+                ctx.font = `${size * 1.2}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.data.emoji, x, y);
+
+                // Draw level indicator
+                if (this.level > 1) {
+                    ctx.font = 'bold 10px Arial';
+                    ctx.fillStyle = '#ffd700';
+                    ctx.fillText(`Lv${this.level}`, x, y - size - 5);
+                }
+
+                // Draw direction indicator
+                if (this.target) {
+                    ctx.save();
+                    ctx.translate(x, y);
+                    ctx.rotate(this.angle);
+                    ctx.beginPath();
+                    ctx.moveTo(size, 0);
+                    ctx.lineTo(size + 8, 0);
+                    ctx.strokeStyle = this.data.projectileColor;
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            }
+        }
+
+        class Enemy {
+            constructor(type, waveMultiplier = 1) {
+                this.type = type;
+                this.data = ENEMY_POKEMON[type];
+                this.pathIndex = 0;
+                this.pathProgress = 0;
+                this.health = this.data.health * waveMultiplier;
+                this.maxHealth = this.health;
+                this.alive = true;
+                this.speed = this.data.speed * CONFIG.baseEnemySpeed;
+            }
+
+            get screenX() {
+                if (this.pathIndex >= path.length - 1) {
+                    return path[path.length - 1].x * CONFIG.cellSize + CONFIG.cellSize / 2;
+                }
+
+                const current = path[this.pathIndex];
+                const next = path[this.pathIndex + 1];
+                const x = current.x + (next.x - current.x) * this.pathProgress;
+                return x * CONFIG.cellSize + CONFIG.cellSize / 2;
+            }
+
+            get screenY() {
+                if (this.pathIndex >= path.length - 1) {
+                    return path[path.length - 1].y * CONFIG.cellSize + CONFIG.cellSize / 2;
+                }
+
+                const current = path[this.pathIndex];
+                const next = path[this.pathIndex + 1];
+                const y = current.y + (next.y - current.y) * this.pathProgress;
+                return y * CONFIG.cellSize + CONFIG.cellSize / 2;
+            }
+
+            update() {
+                if (!this.alive) return;
+
+                // Move along path
+                this.pathProgress += this.speed * 0.02 * gameSpeed;
+
+                if (this.pathProgress >= 1) {
+                    this.pathProgress = 0;
+                    this.pathIndex++;
+
+                    // Reached end of path
+                    if (this.pathIndex >= path.length - 1) {
+                        this.alive = false;
+                        lives--;
+                        updateUI();
+
+                        if (lives <= 0) {
+                            endGame(false);
+                        }
+                    }
+                }
+            }
+
+            takeDamage(amount) {
+                this.health -= amount;
+                if (this.health <= 0) {
+                    this.alive = false;
+                    money += this.data.reward;
+                    updateUI();
+                }
+            }
+
+            draw() {
+                if (!this.alive) return;
+
+                const x = this.screenX;
+                const y = this.screenY;
+                const size = CONFIG.cellSize * 0.35;
+
+                // Draw shadow
+                ctx.beginPath();
+                ctx.ellipse(x, y + size * 0.8, size * 0.8, size * 0.3, 0, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                ctx.fill();
+
+                // Draw enemy body
+                const typeColor = TYPES[this.data.type]?.color || '#adb5bd';
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fillStyle = typeColor;
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Draw emoji
+                ctx.font = `${size * 1.2}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.data.emoji, x, y);
+
+                // Draw health bar
+                const barWidth = size * 2;
+                const barHeight = 5;
+                const barY = y - size - 8;
+                const healthPercent = this.health / this.maxHealth;
+
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                ctx.fillRect(x - barWidth / 2, barY, barWidth, barHeight);
+
+                ctx.fillStyle = healthPercent > 0.5 ? '#51cf66' : healthPercent > 0.25 ? '#ffd43b' : '#ff6b6b';
+                ctx.fillRect(x - barWidth / 2, barY, barWidth * healthPercent, barHeight);
+            }
+        }
+
+        class Projectile {
+            constructor(x, y, target, damage, color, type) {
+                this.x = x;
+                this.y = y;
+                this.target = target;
+                this.damage = damage;
+                this.color = color;
+                this.type = type;
+                this.speed = 8;
+                this.alive = true;
+            }
+
+            update() {
+                if (!this.alive || !this.target || !this.target.alive) {
+                    this.alive = false;
+                    return;
+                }
+
+                const dx = this.target.screenX - this.x;
+                const dy = this.target.screenY - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < 10) {
+                    // Hit target
+                    this.target.takeDamage(this.damage);
+                    this.alive = false;
+                    return;
+                }
+
+                // Move towards target
+                this.x += (dx / dist) * this.speed * gameSpeed;
+                this.y += (dy / dist) * this.speed * gameSpeed;
+            }
+
+            draw() {
+                if (!this.alive) return;
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 5, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+
+                // Glow effect
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 8, 0, Math.PI * 2);
+                ctx.fillStyle = this.color + '40';
+                ctx.fill();
+            }
+        }
+
+        // ============================================
+        // Game Functions
+        // ============================================
+
+        let selectedTower = null;
+
+        function initGame() {
+            path = generatePath();
+            towers = [];
+            enemies = [];
+            projectiles = [];
+            money = CONFIG.startMoney;
+            lives = CONFIG.startLives;
+            currentWave = 0;
+            waveInProgress = false;
+            selectedPokemon = null;
+            selectedTower = null;
+            gameSpeed = 1;
+            gameOver = false;
+            gameWon = false;
+            enemySpawnQueue = [];
+            spawnTimer = 0;
+
+            updateUI();
+            document.getElementById('gameOverScreen').classList.remove('visible');
+            document.getElementById('winScreen').classList.remove('visible');
+        }
+
+        function selectPokemon(type) {
+            if (money < TOWER_POKEMON[type].cost) return;
+
+            // Deselect all buttons
+            document.querySelectorAll('.pokemon-btn').forEach(btn => {
+                btn.classList.remove('selected');
+            });
+
+            if (selectedPokemon === type) {
+                selectedPokemon = null;
+            } else {
+                selectedPokemon = type;
+                document.querySelector(`[data-pokemon="${type}"]`).classList.add('selected');
+            }
+
+            selectedTower = null;
+        }
+
+        function placeTower(gridX, gridY) {
+            if (!selectedPokemon) return false;
+            if (money < TOWER_POKEMON[selectedPokemon].cost) return false;
+
+            // Check if position is on path
+            for (const p of path) {
+                if (p.x === gridX && p.y === gridY) {
+                    return false;  // Can't place on path
+                }
+            }
+
+            // Check if position already has a tower
+            for (const tower of towers) {
+                if (tower.x === gridX && tower.y === gridY) {
+                    return false;
+                }
+            }
+
+            // Check bounds
+            const cols = Math.floor(canvas.width / CONFIG.cellSize);
+            const rows = Math.floor(canvas.height / CONFIG.cellSize);
+            if (gridX < 0 || gridX >= cols || gridY < 0 || gridY >= rows) {
+                return false;
+            }
+
+            // Place tower
+            towers.push(new Tower(gridX, gridY, selectedPokemon));
+            money -= TOWER_POKEMON[selectedPokemon].cost;
+            updateUI();
+
+            return true;
+        }
+
+        function startWave() {
+            if (waveInProgress) return;
+            if (currentWave >= WAVES.length) return;
+
+            waveInProgress = true;
+            const wave = WAVES[currentWave];
+            const waveMultiplier = 1 + currentWave * 0.15;  // Enemies get stronger each wave
+
+            enemySpawnQueue = wave.enemies.map(type => ({ type, waveMultiplier }));
+            spawnTimer = 0;
+
+            document.getElementById('startWaveBtn').disabled = true;
+            document.getElementById('startWaveBtn').textContent = '⏳ Welle läuft...';
+        }
+
+        function spawnEnemy() {
+            if (enemySpawnQueue.length === 0) return;
+
+            const { type, waveMultiplier } = enemySpawnQueue.shift();
+            enemies.push(new Enemy(type, waveMultiplier));
+        }
+
+        function checkWaveComplete() {
+            if (!waveInProgress) return;
+
+            // Check if all enemies spawned and defeated
+            if (enemySpawnQueue.length === 0 && enemies.filter(e => e.alive).length === 0) {
+                waveInProgress = false;
+                currentWave++;
+
+                if (currentWave >= WAVES.length) {
+                    endGame(true);
+                } else {
+                    document.getElementById('startWaveBtn').disabled = false;
+                    document.getElementById('startWaveBtn').textContent = '▶ Welle starten';
+
+                    // Bonus money for completing wave
+                    money += 25 + currentWave * 5;
+                    updateUI();
+                }
+            }
+        }
+
+        function toggleSpeed() {
+            gameSpeed = gameSpeed === 1 ? 2 : 1;
+            document.querySelector('.speed-btn').textContent = `🚀 ${gameSpeed}x`;
+        }
+
+        function updateUI() {
+            document.getElementById('livesDisplay').textContent = lives;
+            document.getElementById('moneyDisplay').textContent = money;
+            document.getElementById('waveDisplay').textContent = currentWave + 1;
+            document.getElementById('enemyCount').textContent = enemies.filter(e => e.alive).length;
+
+            // Update shop buttons
+            document.querySelectorAll('.pokemon-btn').forEach(btn => {
+                const pokemon = btn.dataset.pokemon;
+                const cost = TOWER_POKEMON[pokemon].cost;
+                if (money < cost) {
+                    btn.classList.add('disabled');
+                } else {
+                    btn.classList.remove('disabled');
+                }
+            });
+        }
+
+        function endGame(won) {
+            if (won) {
+                gameWon = true;
+                document.getElementById('winScreen').classList.add('visible');
+            } else {
+                gameOver = true;
+                document.getElementById('finalWave').textContent = currentWave + 1;
+                document.getElementById('gameOverScreen').classList.add('visible');
+            }
+        }
+
+        function restartGame() {
+            initGame();
+        }
+
+        // ============================================
+        // Drawing Functions
+        // ============================================
+
+        function drawPath() {
+            // Draw path tiles
+            ctx.fillStyle = '#8b7355';
+            for (const p of path) {
+                if (p.x >= 0 && p.x < Math.floor(canvas.width / CONFIG.cellSize)) {
+                    ctx.fillRect(
+                        p.x * CONFIG.cellSize,
+                        p.y * CONFIG.cellSize,
+                        CONFIG.cellSize,
+                        CONFIG.cellSize
+                    );
+                }
+            }
+
+            // Draw path borders
+            ctx.strokeStyle = '#6b5344';
+            ctx.lineWidth = 2;
+            for (const p of path) {
+                if (p.x >= 0 && p.x < Math.floor(canvas.width / CONFIG.cellSize)) {
+                    ctx.strokeRect(
+                        p.x * CONFIG.cellSize,
+                        p.y * CONFIG.cellSize,
+                        CONFIG.cellSize,
+                        CONFIG.cellSize
+                    );
+                }
+            }
+        }
+
+        function drawGrid() {
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.lineWidth = 1;
+
+            const cols = Math.floor(canvas.width / CONFIG.cellSize);
+            const rows = Math.floor(canvas.height / CONFIG.cellSize);
+
+            for (let x = 0; x <= cols; x++) {
+                ctx.beginPath();
+                ctx.moveTo(x * CONFIG.cellSize, 0);
+                ctx.lineTo(x * CONFIG.cellSize, canvas.height);
+                ctx.stroke();
+            }
+
+            for (let y = 0; y <= rows; y++) {
+                ctx.beginPath();
+                ctx.moveTo(0, y * CONFIG.cellSize);
+                ctx.lineTo(canvas.width, y * CONFIG.cellSize);
+                ctx.stroke();
+            }
+        }
+
+        function drawHoverCell(gridX, gridY) {
+            if (selectedPokemon && gridX >= 0 && gridY >= 0) {
+                // Check if valid placement
+                let valid = true;
+
+                for (const p of path) {
+                    if (p.x === gridX && p.y === gridY) {
+                        valid = false;
+                        break;
+                    }
+                }
+
+                for (const tower of towers) {
+                    if (tower.x === gridX && tower.y === gridY) {
+                        valid = false;
+                        break;
+                    }
+                }
+
+                ctx.fillStyle = valid ? 'rgba(81, 207, 102, 0.3)' : 'rgba(255, 107, 107, 0.3)';
+                ctx.fillRect(
+                    gridX * CONFIG.cellSize,
+                    gridY * CONFIG.cellSize,
+                    CONFIG.cellSize,
+                    CONFIG.cellSize
+                );
+
+                // Draw range preview
+                if (valid) {
+                    const range = TOWER_POKEMON[selectedPokemon].range;
+                    ctx.beginPath();
+                    ctx.arc(
+                        gridX * CONFIG.cellSize + CONFIG.cellSize / 2,
+                        gridY * CONFIG.cellSize + CONFIG.cellSize / 2,
+                        range,
+                        0,
+                        Math.PI * 2
+                    );
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+            }
+        }
+
+        // ============================================
+        // Game Loop
+        // ============================================
+
+        let mouseGridX = -1;
+        let mouseGridY = -1;
+
+        function gameLoop() {
+            if (gameOver || gameWon) {
+                requestAnimationFrame(gameLoop);
+                return;
+            }
+
+            // Clear canvas
+            ctx.fillStyle = '#2d5a27';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw grid and path
+            drawGrid();
+            drawPath();
+
+            // Draw hover cell
+            drawHoverCell(mouseGridX, mouseGridY);
+
+            // Spawn enemies
+            if (waveInProgress && enemySpawnQueue.length > 0) {
+                spawnTimer += gameSpeed;
+                if (spawnTimer >= CONFIG.waveDelay / 16) {  // Convert ms to frames
+                    spawnTimer = 0;
+                    spawnEnemy();
+                }
+            }
+
+            // Update and draw towers
+            for (const tower of towers) {
+                tower.update();
+                tower.draw();
+            }
+
+            // Update and draw enemies
+            for (const enemy of enemies) {
+                enemy.update();
+                enemy.draw();
+            }
+
+            // Update and draw projectiles
+            for (const projectile of projectiles) {
+                projectile.update();
+                projectile.draw();
+            }
+
+            // Clean up dead entities
+            enemies = enemies.filter(e => e.alive);
+            projectiles = projectiles.filter(p => p.alive);
+
+            // Check wave completion
+            checkWaveComplete();
+
+            // Update enemy count
+            document.getElementById('enemyCount').textContent = enemies.filter(e => e.alive).length;
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // ============================================
+        // Event Handlers
+        // ============================================
+
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            mouseGridX = Math.floor(x / CONFIG.cellSize);
+            mouseGridY = Math.floor(y / CONFIG.cellSize);
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            mouseGridX = -1;
+            mouseGridY = -1;
+        });
+
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            const gridX = Math.floor(x / CONFIG.cellSize);
+            const gridY = Math.floor(y / CONFIG.cellSize);
+
+            if (selectedPokemon) {
+                if (placeTower(gridX, gridY)) {
+                    // Keep pokemon selected for multiple placements
+                    if (money < TOWER_POKEMON[selectedPokemon].cost) {
+                        selectedPokemon = null;
+                        document.querySelectorAll('.pokemon-btn').forEach(btn => {
+                            btn.classList.remove('selected');
+                        });
+                    }
+                }
+            } else {
+                // Check if clicking on a tower
+                for (const tower of towers) {
+                    if (tower.x === gridX && tower.y === gridY) {
+                        selectedTower = selectedTower === tower ? null : tower;
+                        break;
+                    }
+                }
+            }
+        });
+
+        // Right-click to cancel selection
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            selectedPokemon = null;
+            selectedTower = null;
+            document.querySelectorAll('.pokemon-btn').forEach(btn => {
+                btn.classList.remove('selected');
+            });
+        });
+
+        // Touch support
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            const x = touch.clientX - rect.left;
+            const y = touch.clientY - rect.top;
+
+            const gridX = Math.floor(x / CONFIG.cellSize);
+            const gridY = Math.floor(y / CONFIG.cellSize);
+
+            if (selectedPokemon) {
+                placeTower(gridX, gridY);
+            }
+        });
+
+        // ============================================
+        // Start Game
+        // ============================================
+
+        initGame();
+        gameLoop();
+    </script>
+</body>
+</html>
